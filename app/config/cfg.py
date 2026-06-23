@@ -1,0 +1,237 @@
+import sys
+from enum import Enum
+from re import compile
+from urllib.request import getproxies
+
+from PySide6.QtCore import QRect, QStandardPaths, QLocale
+from qfluentwidgets import (
+    QConfig,
+    ConfigItem,
+    OptionsConfigItem,
+    BoolValidator,
+    OptionsValidator,
+    RangeConfigItem,
+    RangeValidator,
+    FolderValidator,
+    ConfigValidator,
+    ConfigSerializer,
+    FolderListValidator,
+    Theme,
+)
+
+from app.platform.android import IS_ANDROID
+
+BASE_HEADERS = {
+    "accept-encoding": "deflate, br, gzip",
+    "accept-language": "zh-CN,zh;q=0.9",
+    "cookie": "down_ip=1",
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
+}
+
+_PROXY_PROTOCOLS = ("http", "https", "ftp")
+
+
+class Language(Enum):
+    CHINESE_SIMPLIFIED = QLocale(QLocale.Language.Chinese, QLocale.Country.China)
+    CHINESE_TRADITIONAL = QLocale(QLocale.Language.Chinese, QLocale.Country.Taiwan)
+    CANTONESE = QLocale(QLocale.Language.Cantonese, QLocale.Country.HongKong)
+    ENGLISH_UNITED_STATES = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates)
+    JAPANESE = QLocale(QLocale.Language.Japanese, QLocale.Country.Japan)
+    RUSSIAN = QLocale(QLocale.Language.Russian, QLocale.Country.Russia)
+    AUTO = QLocale()
+
+
+class ProxyValidator(ConfigValidator):
+    PATTERN = compile(
+        r"^"
+        r"(?P<protocol>http|https|socks4|socks5)://"
+        r"(?:(?P<user>\w+):(?P<password>[\w!@#$%^&*()]+)@)?"
+        r"(?:"
+        r"(?P<ip>(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|"
+        r"(?P<domain>(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6})"
+        r")"
+        r":(?P<port>\d{1,5})"
+        r"$"
+    )
+
+    def validate(self, value: str) -> bool:
+        return bool(self.PATTERN.match(value)) or value in {"Auto", "Off"}
+
+    def correct(self, value) -> str:
+        return value if self.validate(value) else "Auto"
+
+
+class GeometrySerializer(ConfigSerializer):
+    def serialize(self, value: QRect) -> str:
+        x, y, w, h = value.x(), value.y(), value.width(), value.height()
+        return f"{x},{y},{w},{h}"
+
+    def deserialize(self, value: str) -> QRect:
+        x, y, w, h = map(int, value.split(","))
+        return QRect(x, y, w, h)
+
+
+class LanguageSerializer(ConfigSerializer):
+    def serialize(self, language):
+        return language.value.name() if language != Language.AUTO else "Auto"
+
+    def deserialize(self, value: str):
+        return Language(QLocale(value)) if value != "Auto" else Language.AUTO
+
+
+class StringListValidator(ConfigValidator):
+    def validate(self, value) -> bool:
+        return isinstance(value, list) and all(isinstance(i, str) for i in value)
+
+    def correct(self, value) -> list:
+        if not isinstance(value, list):
+            return []
+        return [i for i in value if isinstance(i, str)]
+
+
+class CategoryListValidator(ConfigValidator):
+    def validate(self, value) -> bool:
+        if not isinstance(value, list):
+            return False
+        return all(
+            isinstance(item, dict) and isinstance(item.get("name"), str)
+            for item in value
+        )
+
+    def correct(self, value) -> list:
+        return value if self.validate(value) else []
+
+
+class JsonConfigSerializer(ConfigSerializer):
+    def __init__(self, expected: type, fallback):
+        self._expected = expected
+        self._fallback = fallback
+
+    def serialize(self, value) -> str:
+        import json
+        return json.dumps(value, ensure_ascii=False)
+
+    def deserialize(self, value: str):
+        import json
+        try:
+            result = json.loads(value)
+            return result if isinstance(result, self._expected) else self._fallback()
+        except (ValueError, TypeError):
+            return self._fallback()
+
+
+class ClientProfileValidator(ConfigValidator):
+    def validate(self, value) -> bool:
+        return isinstance(value, str) and bool(value)
+
+    def correct(self, value) -> str:
+        return value if self.validate(value) else "auto"
+
+
+class HeadersValidator(ConfigValidator):
+    def validate(self, value) -> bool:
+        return isinstance(value, dict) and bool(value) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+        )
+
+    def correct(self, value) -> dict:
+        return value if self.validate(value) else dict(BASE_HEADERS)
+
+
+class Config(QConfig):
+
+    # 下载
+    downloadFolder = ConfigItem(
+        "GeneralDownload", "DownloadFolder",
+        "/storage/emulated/0/Download" if IS_ANDROID
+        else QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation),
+        FolderValidator(),
+    )
+    memoryDownloadFolders = ConfigItem(
+        "GeneralDownload", "HistoryDownloadFolder", [], FolderListValidator()
+    )
+    maxTaskNum = RangeConfigItem("GeneralDownload", "MaxTaskNum", 3, RangeValidator(1, 10))
+    enableSpeedLimitation = ConfigItem("GeneralDownload", "enableSpeedLimitation", False, BoolValidator())
+    speedLimitation = RangeConfigItem(
+        "GeneralDownload", "SpeedLimitation", 4194304, RangeValidator(1024, 104857600)
+    )
+    SSLVerify = ConfigItem("GeneralDownload", "SSLVerify", False, BoolValidator(), restart=True)
+    proxyServer = ConfigItem("GeneralDownload", "ProxyServer", "Auto", ProxyValidator())
+    preBlockNum = RangeConfigItem("GeneralDownload", "PreBlockNum", 8, RangeValidator(1, 256))
+    autoSpeedUp = ConfigItem("GeneralDownload", "AutoSpeedUp", True, BoolValidator())
+    maxReassignSize = RangeConfigItem(
+        "GeneralDownload", "MaxReassignSize", 3, RangeValidator(1, 100)
+    )
+
+    # 分类
+    enableCategory = ConfigItem("Category", "EnableCategory", False, BoolValidator())
+    categoryRules = ConfigItem(
+        "Category", "CategoryRules", [],
+        CategoryListValidator(), JsonConfigSerializer(list, list),
+    )
+
+    # 浏览器扩展
+    enableBrowserExtension = ConfigItem("Browser", "EnableBrowserExtension", False, BoolValidator())
+    browserExtensionPairToken = ConfigItem("Browser", "BrowserExtensionPairToken", "")
+    enableRaiseWindowWhenReceiveMsg = ConfigItem(
+        "Browser", "EnableRaiseWindowWhenReceiveMsg", False, BoolValidator()
+    )
+
+    # 个性化
+    if sys.platform == "win32":
+        from app.platform.windows import isWin10
+        backgroundEffect = OptionsConfigItem(
+            "Personalization", "BackgroundEffect",
+            "Acrylic" if isWin10() else "Mica",
+            OptionsValidator(["Acrylic", "Mica", "MicaAlt", "Aero", "None"]),
+        )
+    customThemeMode = OptionsConfigItem(
+        "Personalization", "ThemeMode", Theme.AUTO,
+        OptionsValidator(Theme),
+    )
+    dpiScale = RangeConfigItem("Personalization", "DpiScale", 0, RangeValidator(0, 5), restart=True)
+    if sys.platform == "darwin":
+        showDockIcon = ConfigItem("Personalization", "ShowDockIcon", True, BoolValidator())
+        showDockSpeed = ConfigItem("Personalization", "ShowDockSpeed", True, BoolValidator())
+        showMenuBarSpeed = ConfigItem("Personalization", "ShowMenuBarSpeed", True, BoolValidator())
+    language = OptionsConfigItem(
+        "Personalization", "Language", Language.AUTO,
+        OptionsValidator(Language), LanguageSerializer(), restart=True,
+    )
+
+    # 软件
+    checkUpdateAtStartUp = ConfigItem("Software", "CheckUpdateAtStartUp", True, BoolValidator())
+    autoRun = ConfigItem("Software", "AutoRun", False, BoolValidator())
+    enableClipboardListener = ConfigItem("Software", "ClipboardListener", True, BoolValidator())
+    geometry = ConfigItem(
+        "Software", "Geometry", QRect(0, 0, 0, 0), serializer=GeometrySerializer(),
+    )
+
+    # UI 状态
+    collapsedSettingGroups = ConfigItem("UI", "CollapsedSettingGroups", [], StringListValidator())
+    settingGroupOrder = ConfigItem("UI", "SettingGroupOrder", [], StringListValidator())
+
+    # 网络
+    clientProfile = ConfigItem("Network", "ClientProfile", "auto", ClientProfileValidator())
+    defaultRequestHeaders = ConfigItem(
+        "Network", "DefaultHeaders", dict(BASE_HEADERS),
+        HeadersValidator(), JsonConfigSerializer(dict, lambda: dict(BASE_HEADERS)),
+    )
+
+
+cfg = Config()
+
+
+def proxies() -> dict | None:
+    if cfg.proxyServer.value == "Off":
+        return None
+    if cfg.proxyServer.value == "Auto":
+        return getproxies() or None
+    server = str(cfg.proxyServer.value).strip()
+    if not server:
+        return None
+    return {protocol: server for protocol in _PROXY_PROTOCOLS}

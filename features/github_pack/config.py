@@ -1,0 +1,39 @@
+from app.config.cfg import ConfigItem
+from app.models.pack import PackConfig
+from qfluentwidgets import BoolValidator, ConfigValidator, SettingCard
+
+
+def selectedProxySite() -> str: ...
+
+async def probeProxyLatencies() -> dict[str, int]: ...
+
+
+class GitHubProxySiteValidator(ConfigValidator):
+    def validate(self, value) -> bool: ...
+    def correct(self, value) -> str: ...
+
+
+class GitHubProxySiteCard(SettingCard):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def _initWidget(self): ...
+    def _initLayout(self): ...
+    def _bind(self): ...
+
+    def refreshLatencies(self): ...
+    def _refreshItems(self): ...
+    def _onCurrentIndexChanged(self, index: int): ...
+    def _onCustomSiteEditingFinished(self): ...
+
+
+class GitHubConfig(PackConfig):
+    enabled = ConfigItem("GitHub", "Enabled", True, BoolValidator())
+    proxySites = ConfigItem("GitHub", "ProxySites", [])
+    customSite = ConfigItem("GitHub", "CustomSite", "")
+    selectedSite = ConfigItem("GitHub", "SelectedSite", "")
+
+    def setupSettings(self, settingPage): ...
+
+
+githubConfig = GitHubConfig()
