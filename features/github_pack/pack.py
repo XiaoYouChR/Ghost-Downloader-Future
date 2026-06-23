@@ -50,7 +50,15 @@ class GitHubParser(TaskParser):
             and isGitHubFileUrl(options.url)
         )
 
-    async def parse(self, options: TaskOptions) -> Task: ...
+    async def parse(self, options: TaskOptions) -> Task:
+        from dataclasses import replace
+        from app.services.feature_service import featureService
+
+        proxiedUrl = f"{selectedProxySite().rstrip('/')}/{options.url.lstrip('/')}"
+        task = await featureService.parse(replace(options, url=proxiedUrl))
+        task.url = options.url
+        task.packId = "github"
+        return task
 
 
 class GitHubPack(FeaturePack):

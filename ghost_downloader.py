@@ -64,7 +64,7 @@ def startApp(application):
             window = MainWindow()
             window.destroyed.connect(onWindowDestroyed)
         window.show()
-        from app.platform.file_open import raiseWindow
+        from app.platform.desktop import raiseWindow
         raiseWindow(window)
         return window
 
@@ -75,11 +75,11 @@ def startApp(application):
     browserService.pairRequested.connect(lambda req: show().confirmPair(req))
 
     clipboardListener = ClipboardListener(parent=application)
-    cfg.enableClipboardListener.valueChanged.connect(clipboardListener.setEnabled)
-    clipboardListener.setEnabled(cfg.enableClipboardListener.value)
+    cfg.isClipboardListenerEnabled.valueChanged.connect(clipboardListener.setEnabled)
+    clipboardListener.setEnabled(cfg.isClipboardListenerEnabled.value)
     clipboardListener.urlsDetected.connect(lambda urls: show().addUrls(urls))
 
-    if cfg.enableBrowserExtension.value:
+    if cfg.isBrowserExtensionEnabled.value:
         browserService.start()
 
     if sys.platform == "darwin":
@@ -94,8 +94,13 @@ def startApp(application):
         tray = SystemTrayIcon(show().windowIcon(), parent=application)
         tray.show()
 
-    if not sys.platform == "darwin":
-        taskService.taskCompleted.connect(lambda task: _notifyCompleted(task))
+    from app.platform.android import IS_ANDROID
+    if IS_ANDROID:
+        from app.platform.android_notification import notifyTaskCompleted
+    else:
+        from app.platform.desktop_notification import init, notifyTaskCompleted
+        coroutineRunner.submit(init())
+    taskService.taskCompleted.connect(notifyTaskCompleted)
 
     show()
 
@@ -106,10 +111,6 @@ def startApp(application):
         coroutineRunner.stop()
 
     application.aboutToQuit.connect(stopApp)
-
-
-def _notifyCompleted(task):
-    pass
 
 
 if __name__ == "__main__":

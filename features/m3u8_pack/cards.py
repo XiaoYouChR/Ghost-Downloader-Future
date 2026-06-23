@@ -1,71 +1,225 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout, QWidget
+from qfluentwidgets import BodyLabel, ComboBox, CompactSpinBox, FluentIcon, TransparentToolButton
 
 from app.view.cards.draft_cards import UniversalDraftCard
 from app.view.cards.task_cards import UniversalTaskCard
+from app.view.components.editors import AutoSizingEdit
 
 
 class M3U8DraftCard(UniversalDraftCard):
-    def __init__(self, task, parent=None):
-        super().__init__(task, parent)
+    def _initWidget(self):
+        super()._initWidget()
 
-    @property
-    def task(self):
-        return self._task
+    def _initLayout(self):
+        super()._initLayout()
 
-    def _initWidget(self): ...
-    def _initLayout(self): ...
-
-    def _onNameEdited(self): ...
+    def _onNameEdited(self):
+        self.task.setName(self.nameEdit.text())
 
 
 class M3U8TaskCard(UniversalTaskCard):
-    def refresh(self): ...
+    def refresh(self):
+        super().refresh()
 
 
-class M3U8LiveTaskCard(M3U8TaskCard):
-    def refresh(self): ...
-    def _refreshToggleButton(self): ...
+class M3U8LiveTaskCard(UniversalTaskCard):
+    def refresh(self):
+        super().refresh()
+        step = self.task.steps[0] if self.task.steps else None
+        if step is not None:
+            self.statusLabel.setText(step.liveStatus or step.lastMessage or "")
+
+    def _refreshToggleButton(self):
+        pass
 
 
 class M3U8OptionCard(QWidget):
     optionsChanged = Signal()
 
     @property
-    def options(self) -> dict: ...
+    def options(self) -> dict:
+        return {}
 
 
 class StreamSelectCard(M3U8OptionCard):
     def __init__(self, icon, title: str, parent=None, *, streams: list, initial: str = ""):
         super().__init__(parent)
+        self._streams = streams
+        self._initial = initial
+        self.comboBox = ComboBox(self)
 
-    def _initWidget(self): ...
-    def _initLayout(self): ...
-    def _bind(self): ...
+        self._initWidget()
+        self._initLayout()
+        self._bind()
+
+    def _initWidget(self):
+        self.comboBox.setMinimumWidth(220)
+        self.comboBox.addItem(self.tr("默认（最佳）"), userData="")
+        selectedIndex = 0
+        for index, stream in enumerate(self._streams, start=1):
+            width = stream.get("width", 0)
+            height = stream.get("height", 0)
+            codecs = stream.get("codecs", "")
+            frameRate = stream.get("frameRate")
+            label = f"{width}×{height}"
+            if codecs:
+                label += f" · {codecs}"
+            if frameRate:
+                label += f" · {frameRate}fps"
+            selectExpr = f"res=\"{width}x{height}\""
+            self.comboBox.addItem(label, userData=selectExpr)
+            if self._initial and selectExpr == self._initial:
+                selectedIndex = index
+        self.comboBox.setCurrentIndex(selectedIndex)
+
+    def _initLayout(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.addWidget(self.comboBox)
+        layout.addStretch(1)
+
+    def _bind(self):
+        self.comboBox.currentIndexChanged.connect(lambda _: self.optionsChanged.emit())
+
+    @property
+    def options(self) -> dict:
+        return {"selectVideo": self.comboBox.currentData() or ""}
 
 
 class RecordLimitCard(M3U8OptionCard):
     def __init__(self, icon, title: str, parent=None, *, initial: str = ""):
         super().__init__(parent)
+        self._initial = initial
+        self.hourSpinBox = CompactSpinBox(self)
+        self.minuteSpinBox = CompactSpinBox(self)
+        self.secondSpinBox = CompactSpinBox(self)
 
-    def _initWidget(self): ...
-    def _initLayout(self): ...
-    def _bind(self): ...
+        self._initWidget()
+        self._initLayout()
+        self._bind()
+
+    def _initWidget(self):
+        self.hourSpinBox.setRange(0, 99)
+        self.minuteSpinBox.setRange(0, 59)
+        self.secondSpinBox.setRange(0, 59)
+        for box in (self.hourSpinBox, self.minuteSpinBox, self.secondSpinBox):
+            box.setFixedWidth(64)
+        parts = self._initial.split(":") if self._initial else []
+        if len(parts) == 3:
+            try:
+                self.hourSpinBox.setValue(int(parts[0]))
+                self.minuteSpinBox.setValue(int(parts[1]))
+                self.secondSpinBox.setValue(int(parts[2]))
+            except ValueError:
+                pass
+
+    def _initLayout(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.addWidget(self.hourSpinBox)
+        layout.addWidget(BodyLabel(":", self))
+        layout.addWidget(self.minuteSpinBox)
+        layout.addWidget(BodyLabel(":", self))
+        layout.addWidget(self.secondSpinBox)
+        layout.addStretch(1)
+
+    def _bind(self):
+        for box in (self.hourSpinBox, self.minuteSpinBox, self.secondSpinBox):
+            box.valueChanged.connect(lambda _: self.optionsChanged.emit())
+
+    @property
+    def options(self) -> dict:
+        h, m, s = self.hourSpinBox.value(), self.minuteSpinBox.value(), self.secondSpinBox.value()
+        limit = f"{h:02}:{m:02}:{s:02}" if h + m + s > 0 else ""
+        return {"recordLimit": limit}
 
 
 class DecryptionKeyCard(M3U8OptionCard):
     def __init__(self, icon, title: str, parent=None, *, keys: list | None = None, keyTextFile: str = ""):
         super().__init__(parent)
+        self._keyTextFile = keyTextFile
+        self.titleLabel = BodyLabel(title, self)
+        self.keyFileButton = TransparentToolButton(FluentIcon.FOLDER_ADD, self)
+        self.keyFileLabel = BodyLabel(self)
+        self.keysEdit = AutoSizingEdit(self, minimumVisibleLines=3, maximumVisibleLines=10)
 
-    def _initWidget(self): ...
-    def _initLayout(self): ...
-    def _bind(self): ...
+        self._initWidget(keys or [])
+        self._initLayout()
+        self._bind()
+
+    def _initWidget(self, keys: list):
+        self.keyFileButton.setToolTip(self.tr("选择 KEY 文本文件"))
+        self.keysEdit.setPlaceholderText("KID1:KEY1\nKID2:KEY2")
+        self.keysEdit.setPlainText("\n".join(keys))
+        self.keyFileLabel.setText(Path(self._keyTextFile).name if self._keyTextFile else "")
+
+    def _initLayout(self):
+        titleRow = QHBoxLayout()
+        titleRow.setSpacing(15)
+        titleRow.addWidget(self.titleLabel)
+        titleRow.addStretch(1)
+        titleRow.addWidget(self.keyFileLabel)
+        titleRow.addWidget(self.keyFileButton)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 10, 24, 12)
+        layout.setSpacing(10)
+        layout.addLayout(titleRow)
+        layout.addWidget(self.keysEdit)
+
+    def _bind(self):
+        self.keysEdit.textChanged.connect(self.optionsChanged.emit)
+        self.keyFileButton.clicked.connect(self._onChooseKeyFile)
+
+    def _onChooseKeyFile(self):
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("选择 KEY 文本文件"))
+        if not path:
+            return
+        self._keyTextFile = path
+        self.keyFileLabel.setText(Path(path).name)
+        self.optionsChanged.emit()
+
+    @property
+    def options(self) -> dict:
+        keys = [line.strip() for line in self.keysEdit.toPlainText().splitlines() if line.strip()]
+        return {"decryptionKeys": keys, "decryptionKeyFile": self._keyTextFile}
 
 
 class MuxImportCard(M3U8OptionCard):
     def __init__(self, icon, title: str, parent=None, *, initial: list | None = None):
         super().__init__(parent)
+        self.titleLabel = BodyLabel(title, self)
+        self.importEdit = AutoSizingEdit(self, minimumVisibleLines=3, maximumVisibleLines=10)
 
-    def _initWidget(self): ...
-    def _initLayout(self): ...
-    def _bind(self): ...
+        self._initWidget(initial or [])
+        self._initLayout()
+        self._bind()
+
+    def _initWidget(self, imports: list):
+        self.importEdit.setPlaceholderText('path="aud.m4a":lang=eng:name="Audio"')
+        self.importEdit.setPlainText("\n".join(imports))
+
+    def _initLayout(self):
+        titleRow = QHBoxLayout()
+        titleRow.setSpacing(15)
+        titleRow.addWidget(self.titleLabel)
+        titleRow.addStretch(1)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 10, 24, 12)
+        layout.setSpacing(10)
+        layout.addLayout(titleRow)
+        layout.addWidget(self.importEdit)
+
+    def _bind(self):
+        self.importEdit.textChanged.connect(self.optionsChanged.emit)
+
+    @property
+    def options(self) -> dict:
+        imports = [line.strip() for line in self.importEdit.toPlainText().splitlines() if line.strip()]
+        return {"muxImports": imports}

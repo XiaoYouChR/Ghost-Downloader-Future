@@ -6,6 +6,14 @@ def toReadableSize(size: int) -> str:
     return f"{size:.2f} TB"
 
 
+BYTE_SCALE = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3,
+               "Bps": 1, "KBps": 1024, "MBps": 1024 ** 2, "GBps": 1024 ** 3}
+
+
+def toBytes(value: str, unit: str) -> int:
+    return int(float(value) * BYTE_SCALE[unit])
+
+
 def toReadableTime(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds}s"

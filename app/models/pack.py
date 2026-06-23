@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -49,6 +50,32 @@ class PackConfig:
 
     def tr(self, text: str) -> str:
         return QCoreApplication.translate(self.__class__.__name__, text)
+
+
+class BinaryRuntime:
+    name: str = ""
+
+    def path(self) -> str:
+        raise NotImplementedError
+
+    async def probeVersion(self) -> str:
+        path = self.path()
+        if not path:
+            return ""
+        process = await asyncio.create_subprocess_exec(
+            path, "--version",
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await process.communicate()
+        if process.returncode != 0:
+            return ""
+        lines = stdout.decode("utf-8", errors="ignore").splitlines()
+        return lines[0].strip() if lines else ""
+
+    async def installTask(self) -> Task:
+        raise NotImplementedError
 
 
 class FeaturePack:

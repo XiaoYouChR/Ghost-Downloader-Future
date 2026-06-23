@@ -32,7 +32,7 @@ BASE_HEADERS = {
     "upgrade-insecure-requests": "1",
 }
 
-_PROXY_PROTOCOLS = ("http", "https", "ftp")
+PROXY_PROTOCOLS = ("http", "https", "ftp")
 
 
 class Language(Enum):
@@ -155,11 +155,11 @@ class Config(QConfig):
         "GeneralDownload", "HistoryDownloadFolder", [], FolderListValidator()
     )
     maxTaskNum = RangeConfigItem("GeneralDownload", "MaxTaskNum", 3, RangeValidator(1, 10))
-    enableSpeedLimitation = ConfigItem("GeneralDownload", "enableSpeedLimitation", False, BoolValidator())
+    isSpeedLimitEnabled = ConfigItem("GeneralDownload", "isSpeedLimitEnabled", False, BoolValidator())
     speedLimitation = RangeConfigItem(
         "GeneralDownload", "SpeedLimitation", 4194304, RangeValidator(1024, 104857600)
     )
-    SSLVerify = ConfigItem("GeneralDownload", "SSLVerify", False, BoolValidator(), restart=True)
+    shouldVerifySsl = ConfigItem("GeneralDownload", "shouldVerifySsl", False, BoolValidator(), restart=True)
     proxyServer = ConfigItem("GeneralDownload", "ProxyServer", "Auto", ProxyValidator())
     preBlockNum = RangeConfigItem("GeneralDownload", "PreBlockNum", 8, RangeValidator(1, 256))
     autoSpeedUp = ConfigItem("GeneralDownload", "AutoSpeedUp", True, BoolValidator())
@@ -168,16 +168,16 @@ class Config(QConfig):
     )
 
     # 分类
-    enableCategory = ConfigItem("Category", "EnableCategory", False, BoolValidator())
+    isCategoryEnabled = ConfigItem("Category", "EnableCategory", False, BoolValidator())
     categoryRules = ConfigItem(
         "Category", "CategoryRules", [],
         CategoryListValidator(), JsonConfigSerializer(list, list),
     )
 
     # 浏览器扩展
-    enableBrowserExtension = ConfigItem("Browser", "EnableBrowserExtension", False, BoolValidator())
+    isBrowserExtensionEnabled = ConfigItem("Browser", "EnableBrowserExtension", False, BoolValidator())
     browserExtensionPairToken = ConfigItem("Browser", "BrowserExtensionPairToken", "")
-    enableRaiseWindowWhenReceiveMsg = ConfigItem(
+    shouldRaiseWindowOnBrowserTask = ConfigItem(
         "Browser", "EnableRaiseWindowWhenReceiveMsg", False, BoolValidator()
     )
 
@@ -195,18 +195,18 @@ class Config(QConfig):
     )
     dpiScale = RangeConfigItem("Personalization", "DpiScale", 0, RangeValidator(0, 5), restart=True)
     if sys.platform == "darwin":
-        showDockIcon = ConfigItem("Personalization", "ShowDockIcon", True, BoolValidator())
-        showDockSpeed = ConfigItem("Personalization", "ShowDockSpeed", True, BoolValidator())
-        showMenuBarSpeed = ConfigItem("Personalization", "ShowMenuBarSpeed", True, BoolValidator())
+        shouldShowDockIcon = ConfigItem("Personalization", "ShowDockIcon", True, BoolValidator())
+        shouldShowDockSpeed = ConfigItem("Personalization", "ShowDockSpeed", True, BoolValidator())
+        shouldShowMenuBarSpeed = ConfigItem("Personalization", "ShowMenuBarSpeed", True, BoolValidator())
     language = OptionsConfigItem(
         "Personalization", "Language", Language.AUTO,
         OptionsValidator(Language), LanguageSerializer(), restart=True,
     )
 
     # 软件
-    checkUpdateAtStartUp = ConfigItem("Software", "CheckUpdateAtStartUp", True, BoolValidator())
-    autoRun = ConfigItem("Software", "AutoRun", False, BoolValidator())
-    enableClipboardListener = ConfigItem("Software", "ClipboardListener", True, BoolValidator())
+    shouldCheckUpdateAtStartup = ConfigItem("Software", "CheckUpdateAtStartUp", True, BoolValidator())
+    shouldRunAtLogin = ConfigItem("Software", "AutoRun", False, BoolValidator())
+    isClipboardListenerEnabled = ConfigItem("Software", "ClipboardListener", True, BoolValidator())
     geometry = ConfigItem(
         "Software", "Geometry", QRect(0, 0, 0, 0), serializer=GeometrySerializer(),
     )
@@ -234,4 +234,4 @@ def proxies() -> dict | None:
     server = str(cfg.proxyServer.value).strip()
     if not server:
         return None
-    return {protocol: server for protocol in _PROXY_PROTOCOLS}
+    return {protocol: server for protocol in PROXY_PROTOCOLS}

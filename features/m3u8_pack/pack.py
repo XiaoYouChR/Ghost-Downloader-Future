@@ -1,19 +1,23 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse, parse_qs
+import asyncio
+from email.message import Message
+from email.utils import collapse_rfc2231_value
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
+import m3u8
+from loguru import logger
+from mpegdash.parser import MPEGDASHParser
+
+from app.client import buildClient, toEmulation
+from app.config.cfg import cfg
 from app.models.pack import FeaturePack, TaskParser, FileType
 from app.models.task import Task, TaskOptions
-from app.platform.filesystem import localFilePath
+from app.platform.filesystem import localFilePath, toSafeFilename
+from .config import m3u8Config
 from .task import M3U8Task, M3U8TaskStep
 
-
-RELEASE_TAG = "v0.5.1-beta"
-RELEASE_API = f"https://api.github.com/repos/nilaoda/N_m3u8DL-RE/releases/tags/{RELEASE_TAG}"
-RELEASE_HEADERS = {
-    "accept": "application/vnd.github+json",
-    "user-agent": ...,
-}
 
 MEDIA_SUFFIXES = {
     ".m3u8", ".m3u", ".mpd", ".mp4", ".mkv",
@@ -31,16 +35,216 @@ class M3U8Parser(TaskParser):
         lowered = options.url.lower()
         return ".m3u" in lowered or ".mpd" in lowered
 
-    async def parse(self, options: TaskOptions) -> Task: ...
+    async def parse(self, options: TaskOptions) -> Task:
+        url = options.url.strip()
+        headers = dict(options.headers)
+        proxies = options.proxies
+        outputFolder = options.outputFolder
 
-    def _parseStreams(self, body: str, manifestType: str) -> list[dict]: ...
+        localPath = localFilePath(url, MANIFEST_SUFFIXES)
+        if localPath is not None:
+            url = str(localPath.resolve())
+            body = await asyncio.to_thread(localPath.read_text, encoding="utf-8", errors="ignore")
+            if "http://" not in body and "https://" not in body:
+                raise ValueError("该本地清单只含相对段路径, 缺少 base URL 无法下载, 请改用原始在线链接")
+            manifestUrl = url
+            responseHeaders: dict[str, str] = {}
+        else:
+            emulation = toEmulation(
+                options.clientProfile or cfg.clientProfile.value,
+                options.sourceUserAgent,
+            )
+            client = buildClient(proxies, emulation=emulation, headers=headers)
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                body = response.text
+                responseHeaders = {k.lower(): v for k, v in response.headers.items()}
+                manifestUrl = str(response.url)
+            finally:
+                await client.aclose()
+
+        loweredUrl = manifestUrl.lower()
+        contentType = responseHeaders.get("content-type", "").lower()
+        sample = body.lstrip()[:256].lower()
+        if ".mpd" in loweredUrl or "dash+xml" in contentType or sample.startswith("<mpd"):
+            manifestType = "mpd"
+        else:
+            manifestType = "m3u8"
+
+        if manifestType == "mpd":
+            lowered = body.lower()
+            isLive = 'type="dynamic"' in lowered or "type='dynamic'" in lowered
+        else:
+            playlist = m3u8.loads(body, uri=manifestUrl)
+            if playlist.segments:
+                isLive = not playlist.is_endlist
+            elif playlist.playlists:
+                variantUrl = playlist.playlists[0].absolute_uri or ""
+                if variantUrl.lower().startswith(("http://", "https://")):
+                    try:
+                        variantClient = buildClient(proxies, emulation=toEmulation(
+                            options.clientProfile or cfg.clientProfile.value,
+                            options.sourceUserAgent,
+                        ), headers=headers)
+                        try:
+                            variantResponse = await variantClient.get(variantUrl)
+                            variantResponse.raise_for_status()
+                            variantBody = variantResponse.text
+                        finally:
+                            await variantClient.aclose()
+                        isLive = not m3u8.loads(variantBody, uri=variantUrl).is_endlist
+                    except Exception as e:
+                        logger.warning("取变体清单判活失败, 按点播处理: {}", repr(e))
+                        isLive = False
+                else:
+                    isLive = False
+            else:
+                isLive = "#ext-x-endlist" not in body.lower()
+
+        extension = "ts" if isLive else m3u8Config.outputFormat.value
+        streams = self._parseStreams(body, manifestType)
+
+        cd = responseHeaders.get("content-disposition", "")
+        name = ""
+        if cd:
+            msg = Message()
+            msg["Content-Disposition"] = cd
+            params = msg.get_params(header="Content-Disposition")
+            paramDict = {k.lower(): v for k, v in params}
+            name = collapse_rfc2231_value(
+                paramDict.get("filename") or paramDict.get("filename*") or ""
+            ).strip("\"' ")
+
+        if not name:
+            parsedManifest = urlparse(manifestUrl)
+            for key in ("filename", "file", "name", "title"):
+                values = parse_qs(parsedManifest.query).get(key)
+                if values:
+                    name = values[0]
+                    break
+
+        if not name and urlparse(manifestUrl).path:
+            name = unquote(Path(urlparse(manifestUrl).path).name)
+
+        if name:
+            suffix = Path(name).suffix
+            stem = name[:-len(suffix)] if suffix.lower() in MEDIA_SUFFIXES else name
+            name = toSafeFilename(stem, fallback="stream")
+            name = f"{name}.{extension}"
+        else:
+            name = f"stream.{extension}"
+
+        task = M3U8Task(
+            name=name,
+            url=url,
+            fileSize=1,
+            outputFolder=outputFolder,
+            manifestType=manifestType,
+            isLive=isLive,
+            streams=streams,
+        )
+
+        step = M3U8TaskStep(
+            stepIndex=1,
+            headers=headers,
+            proxies=proxies if isinstance(proxies, dict) else {},
+            threadCount=m3u8Config.threadCount.value,
+            retryCount=m3u8Config.retryCount.value,
+            requestTimeout=m3u8Config.requestTimeout.value,
+            shouldAutoSelect=m3u8Config.shouldAutoSelect.value,
+            shouldConcurrentDownload=m3u8Config.shouldConcurrentDownload.value,
+            shouldAppendUrlParams=m3u8Config.shouldAppendUrlParams.value,
+            shouldBinaryMerge=m3u8Config.shouldBinaryMerge.value,
+            shouldCheckSegmentsCount=m3u8Config.shouldCheckSegmentsCount.value,
+            shouldDeleteTemp=m3u8Config.shouldDeleteTemp.value,
+            outputFormat=m3u8Config.outputFormat.value,
+            customMuxAfterDone=m3u8Config.customMuxAfterDone.value,
+            subtitleFormat=m3u8Config.subtitleFormat.value,
+            shouldSelectAllAudioSubtitle=m3u8Config.shouldSelectAllAudioSubtitle.value,
+            maxSpeed=m3u8Config.maxSpeed.value,
+            speedUnit=m3u8Config.speedUnit.value,
+            adKeyword=m3u8Config.adKeyword.value,
+            shouldOmitDateInfo=m3u8Config.shouldOmitDateInfo.value,
+            shouldKeepImageSegments=m3u8Config.shouldKeepImageSegments.value,
+            decryptionEngine=m3u8Config.decryptionEngine.value,
+            decryptionBinaryPath=m3u8Config.decryptionBinaryPath.value,
+            shouldUseMp4RealTimeDecryption=m3u8Config.shouldUseMp4RealTimeDecryption.value,
+            shouldKeepLiveSegments=m3u8Config.shouldKeepLiveSegments.value,
+            shouldUseLivePipeMux=m3u8Config.shouldUseLivePipeMux.value,
+            shouldFixLiveVtt=m3u8Config.shouldFixLiveVtt.value,
+            liveWaitTime=m3u8Config.liveWaitTime.value,
+            liveTakeCount=m3u8Config.liveTakeCount.value,
+        )
+        task.addStep(step)
+        return task
+
+    def _parseStreams(self, body: str, manifestType: str) -> list[dict]:
+        try:
+            if manifestType == "mpd":
+                return self._mpdStreams(body)
+            return self._hlsStreams(body)
+        except Exception as e:
+            logger.warning("枚举可选视频流失败: {}", repr(e))
+            return []
+
+    def _hlsStreams(self, body: str) -> list[dict]:
+        playlist = m3u8.loads(body)
+        streams = []
+        for variant in playlist.playlists:
+            resolution = variant.stream_info.resolution
+            if not resolution:
+                continue
+            width, height = resolution
+            streams.append({
+                "width": width,
+                "height": height,
+                "codecs": variant.stream_info.codecs,
+                "frameRate": variant.stream_info.frame_rate,
+            })
+        return streams
+
+    def _mpdStreams(self, body: str) -> list[dict]:
+        mpd = MPEGDASHParser.parse(body)
+        if not mpd.periods:
+            return []
+        streams = []
+        for adaptationSet in mpd.periods[0].adaptation_sets:
+            for representation in adaptationSet.representations:
+                if not representation.width:
+                    continue
+                contentType = (adaptationSet.content_type or "").lower()
+                mimeType = (adaptationSet.mime_type or representation.mime_type or "").lower()
+                isVideo = (
+                    contentType == "video"
+                    or mimeType.startswith("video")
+                    or (representation.id and "video" in representation.id)
+                )
+                if not isVideo:
+                    continue
+
+                frameRate = None
+                if representation.frame_rate:
+                    text = str(representation.frame_rate)
+                    if "/" in text:
+                        num, den = text.split("/")
+                        frameRate = int(num) / int(den) if int(den) else None
+                    else:
+                        frameRate = float(text)
+
+                streams.append({
+                    "width": representation.width,
+                    "height": representation.height,
+                    "codecs": representation.codecs,
+                    "frameRate": frameRate,
+                })
+        return streams
 
 
 class M3U8Pack(FeaturePack):
     packId = "m3u8"
 
     def __init__(self):
-        from .config import m3u8Config
         self.config = m3u8Config
 
     def parsers(self):

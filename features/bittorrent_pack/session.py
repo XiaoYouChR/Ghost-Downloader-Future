@@ -1,6 +1,7 @@
 import asyncio
-from PySide6.QtCore import QObject, Signal
 from urllib.parse import urlsplit
+
+from PySide6.QtCore import QObject, Signal
 
 from app.config.cfg import cfg, proxies
 
@@ -10,7 +11,8 @@ from .config import bittorrentConfig
 class BTSession(QObject):
     alertReceived = Signal(object)
 
-    def __init__(self):
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self._session = None
         self._supervisor = None
 
@@ -18,26 +20,23 @@ class BTSession(QObject):
         if self._session is not None:
             return
         import libtorrent as lt
-        from app import VERSION
+        from app.config.constants import VERSION
         self._session = lt.session({
             "user_agent": f"GhostDownloader/{VERSION} libtorrent/{lt.__version__}",
             "listen_interfaces": f"0.0.0.0:{bittorrentConfig.listenPort.value}",
-            "connections_limit": bittorrentConfig.connectionsLimit.value,
+            "connections_limit": bittorrentConfig.maxConnections.value,
             "download_rate_limit": self._downloadLimit(),
-            "upload_rate_limit": bittorrentConfig.uploadRateLimit.value,
+            "upload_rate_limit": bittorrentConfig.maxUploadSpeed.value,
             "enable_dht": bittorrentConfig.enableDht.value,
             "enable_lsd": bittorrentConfig.enableLsd.value,
-            "enable_upnp": bittorrentConfig.enableUpnp.value,
-            "enable_natpmp": bittorrentConfig.enableNatpmp.value,
             "announce_to_all_trackers": True,
             "announce_to_all_tiers": True,
             "alert_mask": lt.alert.category_t.all_categories,
             **self._toProxySettings(proxies()),
         })
         for item in (
-            bittorrentConfig.downloadRateLimit,
-            bittorrentConfig.uploadRateLimit,
-            bittorrentConfig.connectionsLimit,
+            bittorrentConfig.maxUploadSpeed,
+            bittorrentConfig.maxConnections,
             cfg.isSpeedLimitEnabled,
             cfg.speedLimitation,
         ):
@@ -57,28 +56,24 @@ class BTSession(QObject):
     def session(self):
         return self._session
 
-    def _onLimitChanged(self, _value):
+    def _onLimitChanged(self, _value=None):
         if self._session is None:
             return
         self._session.apply_settings({
             "download_rate_limit": self._downloadLimit(),
-            "upload_rate_limit": bittorrentConfig.uploadRateLimit.value,
-            "connections_limit": bittorrentConfig.connectionsLimit.value,
+            "upload_rate_limit": bittorrentConfig.maxUploadSpeed.value,
+            "connections_limit": bittorrentConfig.maxConnections.value,
         })
 
     def _downloadLimit(self) -> int:
-        btLimit = bittorrentConfig.downloadRateLimit.value
         if not cfg.isSpeedLimitEnabled.value:
-            return btLimit
-        globalLimit = cfg.speedLimitation.value
-        if btLimit <= 0:
-            return globalLimit
-        return min(btLimit, globalLimit)
+            return 0
+        return cfg.speedLimitation.value
 
-    def _toProxySettings(self, proxies: dict | None) -> dict:
-        if not proxies:
+    def _toProxySettings(self, currentProxies: dict | None) -> dict:
+        if not currentProxies:
             return {}
-        proxyUrl = str(proxies.get("https") or proxies.get("http") or "").strip()
+        proxyUrl = str(currentProxies.get("https") or currentProxies.get("http") or "").strip()
         if not proxyUrl:
             return {}
         parsed = urlsplit(proxyUrl)

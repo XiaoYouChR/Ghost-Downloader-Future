@@ -1,26 +1,84 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+import asyncio
+from typing import Callable
 
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QThread, QTimer
+from PySide6.QtWidgets import QApplication
+from loguru import logger
 
 
 class CoroutineRunner(QThread):
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._pending: dict[str, tuple] = {}
+        self._running: dict[str, asyncio.Task] = {}
+
     def run(self):
-        pass
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+        self._loop.close()
 
     def submit(self, work, done: Callable = None, failed: Callable = None, *args, **kwargs) -> str:
-        pass
+        workId = f"custom_{id(done)}_{hash(work)}"
+        self._pending[workId] = (done, failed, args, kwargs)
+
+        async def execute():
+            result, error = None, None
+            try:
+                result = await work
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.opt(exception=e).error("async work failed: {}", workId)
+                error = repr(e)
+            finally:
+                self._running.pop(workId, None)
+
+            entry = self._pending.pop(workId, None)
+            if entry is None:
+                return
+            cb_done, cb_failed, a, kw = entry
+            if error is None and cb_done is not None:
+                self.post(cb_done, result, *a, **kw)
+            elif error is not None and cb_failed is not None:
+                self.post(cb_failed, error, *a, **kw)
+
+        def schedule():
+            self._running[workId] = self._loop.create_task(execute())
+
+        self._loop.call_soon_threadsafe(schedule)
+        return workId
 
     def cancel(self, workId: str) -> bool:
-        pass
+        self._pending.pop(workId, None)
+        task = self._running.pop(workId, None)
+        if task is not None:
+            self._loop.call_soon_threadsafe(task.cancel)
+            return True
+        return False
 
     def post(self, callback: Callable, *args, **kwargs) -> None:
-        pass
+        def wrapper():
+            try:
+                callback(*args, **kwargs)
+            except Exception as e:
+                logger.opt(exception=e).error("callback failed")
+
+        app = QApplication.instance()
+        if app:
+            QTimer.singleShot(0, app, wrapper)
+        else:
+            wrapper()
 
     def stop(self) -> None:
-        pass
+        if self._loop and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        self._pending.clear()
+        self._running.clear()
 
 
 coroutineRunner = CoroutineRunner()

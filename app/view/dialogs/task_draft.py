@@ -16,7 +16,7 @@ class TaskDraftDialog(MessageBoxBase):
     def __init__(self, draft: TaskDraft, parent=None):
         super().__init__(parent)
         self._draft = draft
-        self._debounceTimer = QTimer(self)
+        self._parseTimer = QTimer(self)
         self._cardByUrl: dict[str, DraftCard] = {}
 
     def showStandalone(self) -> None:
@@ -41,9 +41,6 @@ class TaskDraftDialog(MessageBoxBase):
         pass
 
     def _onParseFailed(self, url: str, error: str) -> None:
-        pass
-
-    def _onItemRemoved(self, url: str) -> None:
         pass
 
     def _onItemsReordered(self) -> None:

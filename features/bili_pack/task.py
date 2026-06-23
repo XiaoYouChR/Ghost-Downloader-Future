@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from http_pack.task import HttpTaskStep
 from ffmpeg_pack.task import FFmpegStep
+
+
+def pageStem(taskName: str, pageSuffix: str) -> str:
+    base = taskName[:-4] if taskName.lower().endswith(".mp4") else taskName
+    return f"{base}{pageSuffix}" if pageSuffix else base
 
 
 @dataclass(kw_only=True)
@@ -12,7 +18,8 @@ class BilibiliVideoStep(HttpTaskStep):
     pageSuffix: str = ""
 
     @property
-    def outputFile(self) -> str: ...
+    def outputPath(self) -> str:
+        return str(self.task.outputFolder / f"{pageStem(self.task.name, self.pageSuffix)}.video.m4s")
 
 
 @dataclass(kw_only=True)
@@ -21,7 +28,8 @@ class BilibiliAudioStep(HttpTaskStep):
     pageSuffix: str = ""
 
     @property
-    def outputFile(self) -> str: ...
+    def outputPath(self) -> str:
+        return str(self.task.outputFolder / f"{pageStem(self.task.name, self.pageSuffix)}.audio.m4s")
 
 
 @dataclass(kw_only=True)
@@ -30,10 +38,13 @@ class BilibiliMergeStep(FFmpegStep):
     pageSuffix: str = ""
 
     @property
-    def outputFile(self) -> str: ...
+    def outputFile(self) -> str:
+        return str(self.task.outputFolder / f"{pageStem(self.task.name, self.pageSuffix)}.mp4")
 
     @property
-    def videoPath(self) -> str: ...
+    def _videoPath(self) -> Path:
+        return self.task.outputFolder / f"{pageStem(self.task.name, self.pageSuffix)}.video.m4s"
 
     @property
-    def audioPath(self) -> str: ...
+    def _audioPath(self) -> Path:
+        return self.task.outputFolder / f"{pageStem(self.task.name, self.pageSuffix)}.audio.m4s"

@@ -41,7 +41,7 @@ def buildBinaryInstallTask(
         headers=dict(cfg.defaultRequestHeaders.value),
         proxies=proxies() or {},
         subworkerCount=cfg.preBlockNum.value,
-        supportsRange=True,
+        canUseRangeRequests=True,
         outputFile=archivePath,
     ))
     task.addStep(ExtractStep(

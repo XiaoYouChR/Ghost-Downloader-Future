@@ -135,13 +135,12 @@ class TaskStep:
     def fromFile(cls, file: TaskFile, task: Task) -> TaskStep:
         raise NotImplementedError
 
-    def serialize(self) -> str:
+    def toDict(self) -> dict:
         from app.models.serialization import toDict
-        import json
-        return json.dumps(toDict(self))
+        return toDict(self)
 
     @classmethod
-    def deserialize(cls, data) -> TaskStep:
+    def fromDict(cls, data) -> TaskStep:
         from app.models.serialization import fromDict
         return fromDict(data, cls)
 
@@ -149,7 +148,7 @@ class TaskStep:
 @dataclass(kw_only=True, eq=False)
 class Task:
     _registry: ClassVar[dict[str, Type[Task]]] = {}
-    supportsEdit: ClassVar[bool] = False
+    canEdit: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -343,13 +342,12 @@ class Task:
             logger.opt(exception=e).error("{} failed", self.name)
             raise
 
-    def serialize(self) -> str:
+    def toDict(self) -> dict:
         from app.models.serialization import toDict
-        import json
-        return json.dumps(toDict(self))
+        return toDict(self)
 
     @classmethod
-    def deserialize(cls, data) -> Task:
+    def fromDict(cls, data) -> Task:
         from app.models.serialization import fromDict
         return fromDict(data, cls)
 
