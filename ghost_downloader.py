@@ -44,7 +44,7 @@ def startApp(application):
     def exceptionHook(exceptionType, value, tb):
         _exceptionHook(exceptionType, value, tb)
         message = "".join(traceback.format_exception(exceptionType, value, tb)).rstrip()
-        signalBus.catchException.emit(message)
+        signalBus.exceptionCaught.emit(message)
 
     sys.excepthook = exceptionHook
 
@@ -68,9 +68,9 @@ def startApp(application):
         raiseWindow(window)
         return window
 
-    signalBus.showMainWindow.connect(show)
+    signalBus.activationRequested.connect(show)
     signalBus.openFileRequested.connect(lambda uris: show().addUrls(uris))
-    signalBus.catchException.connect(lambda msg: show().alertException(msg))
+    signalBus.exceptionCaught.connect(lambda msg: show().alertException(msg))
     browserService.taskDraftRequested.connect(lambda tasks: show().addTasks(tasks))
     browserService.pairRequested.connect(lambda req: show().confirmPair(req))
 
@@ -106,6 +106,7 @@ def startApp(application):
 
     def stopApp():
         taskService.stop()
+        browserService.stop()
         featureService.stop()
         taskService.flush()
         coroutineRunner.stop()

@@ -85,7 +85,7 @@ def bestAsset(release: Release) -> ReleaseAsset | None:
         score = assetScore(asset.name)
         if score > bestScore:
             best, bestScore = asset, score
-    return best
+    return best if bestScore >= 0 else None
 
 
 def assetScore(name: str) -> int:

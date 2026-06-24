@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from loguru import logger
 
-from app.config.cfg import cfg, proxies as _proxies
+from app.config.cfg import cfg, proxies
 from app.platform.filesystem import toSafeFilename
 
 
@@ -37,7 +37,7 @@ class TaskOptions:
     )
     clientProfile: str = ""
     sourceUserAgent: str = ""
-    proxies: dict[str, str] | None = field(default_factory=_proxies)
+    proxies: dict[str, str] | None = field(default_factory=proxies)
     subworkerCount: int = field(default_factory=lambda: cfg.preBlockNum.value)
 
 

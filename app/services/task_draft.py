@@ -23,7 +23,7 @@ class TaskDraft(QObject):
     parseSucceeded = Signal(str, object)
     parseFailed = Signal(str, str)
     itemsReordered = Signal()
-    cleared = Signal()
+    itemsCleared = Signal()
     taskConfirmed = Signal(object)
 
     def __init__(self, parent=None):
@@ -82,8 +82,9 @@ class TaskDraft(QObject):
                     options = TaskOptions(**filterFields(TaskOptions, {**self._baseOptions, "url": url}))
                     parseId = coroutineRunner.submit(
                         featureService.parse(options),
-                        done=lambda result: self._onParseFinished(parseId, result, None),
-                        failed=lambda error: self._onParseFinished(parseId, None, error),
+                        done=self._onParsed,
+                        failed=self._onParseFailed,
+                        item=item,
                     )
                 except Exception as e:
                     logger.opt(exception=e).error("提交解析请求失败 {}", url)
@@ -155,7 +156,7 @@ class TaskDraft(QObject):
 
         self._items.clear()
         self._overrides.clear()
-        self.cleared.emit()
+        self.itemsCleared.emit()
         return confirmed
 
     def clear(self) -> None:
@@ -166,7 +167,7 @@ class TaskDraft(QObject):
                 coroutineRunner.cancel(item.parseId)
         self._items.clear()
         self._overrides.clear()
-        self.cleared.emit()
+        self.itemsCleared.emit()
         self.parsingBusyChanged.emit(bool(self._parsing))
 
     def _buildOptions(self, url: str) -> dict[str, Any]:
@@ -174,33 +175,29 @@ class TaskDraft(QObject):
         options.update(self._overrides.get(url, {}))
         return options
 
-    def _onParseFinished(self, parseId: str, resultTask: Task | None, error: str | None) -> None:
-        item = self._parsing.pop(parseId, None)
-        if item is not None:
+    def _onParsed(self, task: Task, item: DraftItem) -> None:
+        if self._parsing.pop(item.parseId, None) is not None:
             self.parsingBusyChanged.emit(bool(self._parsing))
             item.parseId = ""
-
-            if error or resultTask is None:
-                item.task = None
-                self.parseFailed.emit(item.url, error or "解析失败")
-                if error:
-                    logger.warning("解析任务失败 {}: {}", item.url, error)
-                return
-
-            resultTask.setOptions(self._buildOptions(item.url))
-            item.task = resultTask
-            self.parseSucceeded.emit(item.url, resultTask)
+            task.setOptions(self._buildOptions(item.url))
+            item.task = task
+            self.parseSucceeded.emit(item.url, task)
             self.itemsReordered.emit()
             return
 
-        acceptedOptions = self._accepted.pop(parseId, None)
-        if acceptedOptions is None:
+        acceptedOptions = self._accepted.pop(item.parseId, None)
+        if acceptedOptions is not None:
+            task.setOptions(acceptedOptions)
+            self.taskConfirmed.emit(task)
+
+    def _onParseFailed(self, error: str, item: DraftItem) -> None:
+        if self._parsing.pop(item.parseId, None) is not None:
+            self.parsingBusyChanged.emit(bool(self._parsing))
+            item.parseId = ""
+            item.task = None
+            self.parseFailed.emit(item.url, error)
+            logger.warning("解析任务失败 {}: {}", item.url, error)
             return
 
-        if error or resultTask is None:
-            if error:
-                logger.warning("后台确认任务解析失败: {}", error)
-            return
-
-        resultTask.setOptions(acceptedOptions)
-        self.taskConfirmed.emit(resultTask)
+        self._accepted.pop(item.parseId, None)
+        logger.warning("后台确认任务解析失败: {}", error)

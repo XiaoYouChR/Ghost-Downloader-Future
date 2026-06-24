@@ -4,8 +4,6 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 from loguru import logger
 
-SUPPORTED_SCHEMES = {"http", "https", "ftp", "ftps", "magnet"}
-
 
 class ClipboardListener(QObject):
     urlsDetected = Signal(list)
@@ -39,7 +37,7 @@ class ClipboardListener(QObject):
                 parsed = urlparse(url)
             except ValueError:
                 continue
-            if parsed.scheme in SUPPORTED_SCHEMES and parsed.geturl() == url:
+            if parsed.scheme in {"http", "https", "ftp", "ftps", "magnet"} and parsed.geturl() == url:
                 urls.append(url)
 
         if not urls:

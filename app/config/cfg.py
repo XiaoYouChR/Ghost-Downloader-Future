@@ -32,9 +32,6 @@ BASE_HEADERS = {
     "upgrade-insecure-requests": "1",
 }
 
-PROXY_PROTOCOLS = ("http", "https", "ftp")
-
-
 class Language(Enum):
     CHINESE_SIMPLIFIED = QLocale(QLocale.Language.Chinese, QLocale.Country.China)
     CHINESE_TRADITIONAL = QLocale(QLocale.Language.Chinese, QLocale.Country.Taiwan)
@@ -71,8 +68,11 @@ class GeometrySerializer(ConfigSerializer):
         return f"{x},{y},{w},{h}"
 
     def deserialize(self, value: str) -> QRect:
-        x, y, w, h = map(int, value.split(","))
-        return QRect(x, y, w, h)
+        try:
+            x, y, w, h = map(int, value.split(","))
+            return QRect(x, y, w, h)
+        except (ValueError, TypeError):
+            return QRect()
 
 
 class LanguageSerializer(ConfigSerializer):
@@ -234,4 +234,4 @@ def proxies() -> dict | None:
     server = str(cfg.proxyServer.value).strip()
     if not server:
         return None
-    return {protocol: server for protocol in PROXY_PROTOCOLS}
+    return {p: server for p in ("http", "https", "ftp")}

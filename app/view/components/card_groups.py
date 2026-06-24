@@ -1,22 +1,111 @@
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
+from qfluentwidgets import ScrollArea, setFont, isDarkTheme
 
 
 class TitledCardGroup(QWidget):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.headerLabel = QLabel(self)
+        self.scrollArea = ScrollArea(self)
+        self.scrollWidget = QWidget(self)
+        self.scrollLayout = QVBoxLayout(self.scrollWidget)
+
+        setFont(self.headerLabel, 15, QFont.Weight.DemiBold)
+        self.headerLabel.setFixedHeight(30)
+        self.headerLabel.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.scrollArea.setWidget(self.scrollWidget)
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.enableTransparentBackground()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.headerLabel)
+        layout.addWidget(self.scrollArea)
+        self.scrollLayout.setContentsMargins(0, 0, 0, 0)
+        self.scrollLayout.setSpacing(0)
+
     def setTitle(self, title: str) -> None:
-        pass
+        self.headerLabel.setText("    " + title)
 
     def addCard(self, card: QWidget) -> None:
-        pass
+        self.scrollLayout.addWidget(card, alignment=Qt.AlignmentFlag.AlignTop)
+
+    def paintEvent(self, e) -> None:
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(255, 255, 255, 13 if isDarkTheme() else 200))
+        painter.setPen(QColor(0, 0, 0, 96 if isDarkTheme() else 24))
+        painter.drawRoundedRect(self.rect(), 5, 5)
 
 
 class DraftCardGroup(TitledCardGroup):
+    CARD_HEIGHT = 35
+    MIN_VISIBLE = 5
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setTitle(self.tr("解析结果"))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
     def clear(self) -> None:
-        pass
+        while self.scrollLayout.count():
+            child = self.scrollLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self.updateGeometry()
+
+    def sizeHint(self) -> QSize:
+        cards = self._cards()
+        content = sum(self._cardHeight(c) for c in cards)
+        minimum = sum(self._cardHeight(c) for c in cards[:self.MIN_VISIBLE])
+        padding = self._paddingHeight()
+        size = super().sizeHint()
+        return QSize(size.width(), max(padding + minimum, padding + content))
+
+    def minimumSizeHint(self) -> QSize:
+        cards = self._cards()
+        content = sum(self._cardHeight(c) for c in cards[:self.MIN_VISIBLE])
+        size = super().sizeHint()
+        return QSize(size.width(), self._paddingHeight() + content)
+
+    def _cards(self) -> list[QWidget]:
+        return [
+            self.scrollLayout.itemAt(i).widget()
+            for i in range(self.scrollLayout.count())
+            if self.scrollLayout.itemAt(i).widget()
+        ]
+
+    def _cardHeight(self, card: QWidget) -> int:
+        return card.height() or card.sizeHint().height() or self.CARD_HEIGHT
+
+    def _paddingHeight(self) -> int:
+        m = self.contentsMargins()
+        vm = self.scrollArea.viewportMargins()
+        return m.top() + m.bottom() + self.headerLabel.height() + self.scrollArea.frameWidth() * 2 + vm.top() + vm.bottom()
 
 
 class OptionCardGroup(TitledCardGroup):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setTitle(self.tr("下载设置"))
+        self._cards: list[QWidget] = []
+
+    def addCard(self, card: QWidget) -> None:
+        self._cards.append(card)
+        super().addCard(card)
+
     def insertCard(self, index: int, card: QWidget) -> None:
-        pass
+        self._cards.insert(index, card)
+        self.scrollLayout.insertWidget(index, card, alignment=Qt.AlignmentFlag.AlignTop)
 
     def options(self) -> dict:
-        pass
+        result = {}
+        for card in self._cards:
+            if hasattr(card, "options") and callable(card.options):
+                result.update(card.options())
+        return result

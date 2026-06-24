@@ -75,6 +75,8 @@ class CoroutineRunner(QThread):
             wrapper()
 
     def stop(self) -> None:
+        for task in list(self._running.values()):
+            task.cancel()
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
         self._pending.clear()

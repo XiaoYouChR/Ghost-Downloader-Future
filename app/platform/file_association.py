@@ -87,10 +87,11 @@ def _applyLinux(fileTypes: list[FileType]) -> None:
     try:
         subprocess.run(["update-desktop-database", str(desktopDir)], check=False, capture_output=True)
     except FileNotFoundError:
-        pass
+        logger.warning("缺少 update-desktop-database, 跳过")
 
     for mime in mimes:
         try:
             subprocess.run(["xdg-mime", "default", f"{DESKTOP_ID}.desktop", mime], check=False, capture_output=True)
         except FileNotFoundError:
+            logger.warning("缺少 xdg-mime, 跳过文件关联")
             break

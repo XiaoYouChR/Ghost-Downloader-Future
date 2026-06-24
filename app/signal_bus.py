@@ -2,9 +2,9 @@ from PySide6.QtCore import QObject, Signal
 
 
 class SignalBus(QObject):
-    showMainWindow = Signal()
+    activationRequested = Signal()
     openFileRequested = Signal(list)
-    catchException = Signal(str)
+    exceptionCaught = Signal(str)
 
 
 signalBus = SignalBus()

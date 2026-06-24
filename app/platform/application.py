@@ -57,7 +57,7 @@ class SingletonApplication(QApplication):
             return True
 
         if sys.platform == "darwin" and e.type() == QEvent.Type.ApplicationActivate:
-            signalBus.showMainWindow.emit()
+            signalBus.activationRequested.emit()
 
         return super().event(e)
 
@@ -170,7 +170,7 @@ if sys.platform == "linux":
 
         @Slot("QVariantMap")
         def Activate(self, platformData):
-            signalBus.showMainWindow.emit()
+            signalBus.activationRequested.emit()
 
     def _sendToRunningLinux() -> None:
         from PySide6.QtDBus import QDBusConnection, QDBusInterface

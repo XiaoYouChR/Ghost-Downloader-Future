@@ -13,8 +13,6 @@ if TYPE_CHECKING:
     from app.models.task import Task, TaskOptions
     from PySide6.QtWidgets import QWidget
 
-FEATURES_DIR = executableDir / "features"
-
 
 class FeatureService(QObject):
     def __init__(self, parent=None):
@@ -28,7 +26,7 @@ class FeatureService(QObject):
         return self._packs
 
     def load(self) -> None:
-        for pack in loadPacks(FEATURES_DIR):
+        for pack in loadPacks(executableDir / "features"):
             self._register(pack)
 
     def _register(self, pack: FeaturePack) -> None:

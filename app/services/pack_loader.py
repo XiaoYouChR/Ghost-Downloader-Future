@@ -75,11 +75,11 @@ def loadPacks(featuresDir: Path) -> list[FeaturePack]:
         if p.is_dir() and not p.name.startswith(".")
         if (m := PackManifest.fromDir(p)) is not None
     ]
-    ordered = _orderedByDependency(manifests)
-    return [pack for m in ordered if (pack := _loadManifest(m)) is not None]
+    ordered = orderedByDependency(manifests)
+    return [pack for m in ordered if (pack := loadManifest(m)) is not None]
 
 
-def _orderedByDependency(manifests: list[PackManifest]) -> list[PackManifest]:
+def orderedByDependency(manifests: list[PackManifest]) -> list[PackManifest]:
     byName: dict[str, PackManifest] = {m.name: m for m in manifests}
     visiting: list[str] = []
     visited: set[str] = set()
@@ -115,7 +115,7 @@ def _orderedByDependency(manifests: list[PackManifest]) -> list[PackManifest]:
     return [m for m in ordered if m.name not in skipped]
 
 
-def _loadManifest(manifest: PackManifest) -> FeaturePack | None:
+def loadManifest(manifest: PackManifest) -> FeaturePack | None:
     from app.models.pack import FeaturePack
 
     moduleName = manifest.name

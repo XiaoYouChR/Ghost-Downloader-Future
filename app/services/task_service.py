@@ -109,6 +109,7 @@ class TaskQueue:
     def runningCount(self) -> int:
         return len(self._running)
 
+
     def nextWaiting(self) -> str | None:
         return self._waiting.pop(0) if self._waiting else None
 
@@ -157,7 +158,13 @@ class TaskService(QObject):
             self._queue.wait(task.taskId)
             self._pump()
         else:
-            self._start(task)
+            self._dispatch(task)
+
+    def start(self, task: Task) -> None:
+        if self._queue.isRunning(task.taskId) or self._queue.isWaiting(task.taskId):
+            return
+        self._queue.wait(task.taskId)
+        self._pump()
 
     def pause(self, task: Task) -> None:
         from app.models.task import TaskStatus
@@ -215,12 +222,11 @@ class TaskService(QObject):
         self._store.loadSaved()
 
     def stop(self) -> None:
-        from app.services.coroutine_runner import coroutineRunner
+        from app.models.task import TaskStatus
         self._speedTimer.stop()
-        for taskId, workId in list(self._queue._running.items()):
-            coroutineRunner.cancel(workId)
-        self._queue._running.clear()
-        self._queue._waiting.clear()
+        for task in self._store.tasks.values():
+            if task.status in {TaskStatus.RUNNING, TaskStatus.WAITING}:
+                task.setStatus(TaskStatus.PAUSED)
 
     def flush(self) -> None:
         self._flushTimer.stop()
@@ -233,7 +239,7 @@ class TaskService(QObject):
         self.speedChanged.emit(self._speed)
         self._speed = 0
 
-    def _start(self, task: Task) -> None:
+    def _dispatch(self, task: Task) -> None:
         from app.models.task import TaskStatus
         from app.services.coroutine_runner import coroutineRunner
 
@@ -263,14 +269,14 @@ class TaskService(QObject):
                 break
             task = self._store.taskById(taskId)
             if task is not None:
-                self._start(task)
+                self._dispatch(task)
 
     def _onRunDone(self, task: Task) -> None:
         self._queue.done(task.taskId)
         self._flushTimer.start()
         self.taskCompleted.emit(task)
         self._pump()
-        if self._queue.runningCount() == 0 and not self._queue._waiting:
+        if self._queue.runningCount() == 0:
             self._speedTimer.stop()
             self.tasksAllCompleted.emit()
 
