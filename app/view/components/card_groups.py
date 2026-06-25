@@ -106,6 +106,9 @@ class OptionCardGroup(TitledCardGroup):
     def options(self) -> dict:
         result = {}
         for card in self._cards:
-            if hasattr(card, "options") and callable(card.options):
-                result.update(card.options())
+            result.update(card.options())
         return result
+
+    def reset(self) -> None:
+        for card in self._cards:
+            card.reset()

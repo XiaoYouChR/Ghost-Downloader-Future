@@ -12,7 +12,7 @@ from PySide6.QtNetwork import QHostAddress
 from PySide6.QtWebSockets import QWebSocketServer
 from loguru import logger
 
-from app.config.cfg import cfg, proxies
+from app.config.cfg import cfg
 from app.config.constants import VERSION
 from app.services.task_service import taskService
 
@@ -144,7 +144,6 @@ class BrowserService(QObject):
             size=toInt(resource, "size", 0),
             canUseRangeRequests=bool(resource.get("supportsRange")),
             headers=resource.get("headers") or {},
-            proxies=proxies(),
         )
 
     def _toTaskOptions(self, source: str, payload: dict) -> TaskOptions:
@@ -233,7 +232,7 @@ class BrowserService(QObject):
     def _broadcastSnapshots(self) -> None:
         if not self._sessions:
             return
-        tasks = sorted(taskService.tasks.values(), key=lambda t: t.createdAt, reverse=True)
+        tasks = sorted(taskService.tasks, key=lambda t: t.createdAt, reverse=True)
         snapshot = json.dumps({
             "type": MessageType.TASK_SNAPSHOT,
             "tasks": [self._toTaskSummary(t) for t in tasks],
@@ -306,7 +305,7 @@ class BrowserService(QObject):
     def _onHello(self, session: BrowserClientSession, data: dict) -> None:
         requestId = toStr(data, "requestId") or None
 
-        if int(data.get("protocolVersion") or 0) != PROTOCOL_VERSION:
+        if toInt(data, "protocolVersion", 0) != PROTOCOL_VERSION:
             self._sendError(session, "协议版本不匹配", requestId=requestId, code=ErrorCode.PROTOCOL_MISMATCH)
             session.socket.close()
             return

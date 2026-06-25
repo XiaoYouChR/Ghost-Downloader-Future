@@ -27,6 +27,7 @@ def setupEnvironment():
     if sys.platform == "win32":
         setupHiddenSubprocess()
 
+    import app.assets.resources  # noqa: F401
     qconfig.load(f"{APP_DATA_DIR}/UserConfig.json", cfg)
     logger.info("Ghost Downloader v{} launched", VERSION)
 
@@ -34,6 +35,7 @@ def setupEnvironment():
 def startApp(application):
     from app.config.cfg import cfg
     from app.services.coroutine_runner import coroutineRunner
+    from app.services.speed_meter import speedMeter
     from app.services.task_service import taskService
     from app.services.feature_service import featureService
     from app.services.browser_service import browserService
@@ -51,6 +53,7 @@ def startApp(application):
     coroutineRunner.start()
     featureService.load()
     taskService.resumeSaved()
+    featureService.start()
 
     window = None
 
@@ -81,13 +84,16 @@ def startApp(application):
 
     if cfg.isBrowserExtensionEnabled.value:
         browserService.start()
+    cfg.isBrowserExtensionEnabled.valueChanged.connect(
+        lambda enabled: browserService.start() if enabled else browserService.stop()
+    )
 
     if sys.platform == "darwin":
         from app.view.shell.mac_status_item import MacStatusItem
         from app.view.shell.dock import setupDockSpeed
         statusItem = MacStatusItem()
         statusItem.show()
-        taskService.speedChanged.connect(statusItem.setSpeed)
+        speedMeter.speedChanged.connect(statusItem.setSpeed)
         setupDockSpeed()
     else:
         from app.view.shell.tray import SystemTrayIcon
@@ -102,13 +108,16 @@ def startApp(application):
         coroutineRunner.submit(init())
     taskService.taskCompleted.connect(notifyTaskCompleted)
 
+    from app.services.plan import plan
+    taskService.tasksAllCompleted.connect(plan.trigger)
+
     show()
 
     def stopApp():
         taskService.stop()
+        taskService.flush()
         browserService.stop()
         featureService.stop()
-        taskService.flush()
         coroutineRunner.stop()
 
     application.aboutToQuit.connect(stopApp)

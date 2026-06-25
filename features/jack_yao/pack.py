@@ -52,9 +52,9 @@ async def fetchCatalog() -> list[dict]:
     try:
         response = await client.get(CATALOG_API)
         response.raise_for_status()
-        return json.loads(response.text)["OS"]
+        return json.loads(await response.text())["OS"]
     finally:
-        await client.aclose()
+        client.close()
 
 
 class CatalogPage(ScrollArea):
@@ -88,7 +88,7 @@ class CatalogPage(ScrollArea):
     def _loadCatalog(self):
         from app.services.coroutine_runner import coroutineRunner
         self._loadingWidget.setLoading()
-        coroutineRunner.run(fetchCatalog(), self._onCatalogLoaded, self._onCatalogFailed)
+        coroutineRunner.submit(fetchCatalog(), done=self._onCatalogLoaded, failed=self._onCatalogFailed)
 
     def _onCatalogLoaded(self, items: list[dict]):
         for card in self._cards:
@@ -291,10 +291,10 @@ class CatalogDownloadDialog(MaskDialogBase):
         outputFolder = Path(self._folderCard.contentLabel.text())
 
         options = ResourceTaskOptions(url=item["Url"], outputFolder=outputFolder)
-        coroutineRunner.run(
+        coroutineRunner.submit(
             featureService.parse(options),
-            self._onTaskParsed,
-            self._onTaskParseFailed,
+            done=self._onTaskParsed,
+            failed=self._onTaskParseFailed,
         )
         self.close()
 

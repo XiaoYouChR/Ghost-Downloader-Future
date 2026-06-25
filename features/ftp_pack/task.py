@@ -17,6 +17,7 @@ from app.config.cfg import cfg
 from app.models.task import Task, TaskStep, TaskFile, TaskStatus, SpecialFileSize
 from app.platform.filesystem import deletePath, toPosixPath
 from app.platform.sysio import ftruncate, pwrite
+from app.services.speed_meter import speedMeter
 
 FTP_CONNECTION_TIMEOUT = 15
 FTP_SOCKET_TIMEOUT = 30
@@ -36,7 +37,9 @@ class FtpConnectionInfo:
     sourcePath: str
     hasPort: bool = False
 
-    async def connect(self, proxies: dict | None = None) -> aioftp.Client:
+    async def connect(self) -> aioftp.Client:
+        from app.config.cfg import proxyUrl
+
         scheme = self.scheme.lower()
         if scheme != "ftps":
             attempts = [(self.port, "plain")]
@@ -53,28 +56,19 @@ class FtpConnectionInfo:
             "path_timeout": FTP_PATH_TIMEOUT,
         }
 
-        proxyUrl = ""
-        if isinstance(proxies, dict):
-            for key in ("ftp", "https", "http"):
-                value = str(proxies.get(key) or "").strip()
-                if value:
-                    proxyUrl = value
-                    break
-        if proxyUrl:
-            parsed = urlparse(proxyUrl)
-            if parsed.scheme not in {"socks4", "socks5"}:
-                raise ValueError("FTP/FTPS 下载目前仅支持 SOCKS4/SOCKS5 代理或直连")
-            if not parsed.hostname or not parsed.port:
-                raise ValueError("代理配置无效")
-            kwargs.update({
-                "socks_host": parsed.hostname,
-                "socks_port": parsed.port,
-                "socks_version": 4 if parsed.scheme == "socks4" else 5,
-            })
-            if parsed.username:
-                kwargs["username"] = unquote(parsed.username)
-            if parsed.password:
-                kwargs["password"] = unquote(parsed.password)
+        url = proxyUrl()
+        if url:
+            parsed = urlparse(url)
+            if parsed.scheme in {"socks4", "socks5"} and parsed.hostname and parsed.port:
+                kwargs.update({
+                    "socks_host": parsed.hostname,
+                    "socks_port": parsed.port,
+                    "socks_version": 4 if parsed.scheme == "socks4" else 5,
+                })
+                if parsed.username:
+                    kwargs["username"] = unquote(parsed.username)
+                if parsed.password:
+                    kwargs["password"] = unquote(parsed.password)
 
         lastError: Exception | None = None
         for index, (port, mode) in enumerate(attempts):
@@ -313,7 +307,7 @@ class FtpStep(TaskStep):
                 client = None
                 stream = None
                 try:
-                    client = await ftpTask.connectionInfo.connect(ftpTask.proxies)
+                    client = await ftpTask.connectionInfo.connect()
                     stream = await client.download_stream(
                         PurePosixPath(self.remotePath),
                         offset=subworker.position,
@@ -322,9 +316,10 @@ class FtpStep(TaskStep):
                         chunk = await stream.read(65536)
                         if not chunk:
                             return
-                        await cfg.waitForSpeedLimit()
                         pwrite(fd, chunk, subworker.position)
                         subworker.receivedBytes += len(chunk)
+                        speedMeter.addSpeed(len(chunk))
+                        await speedMeter.waitForSpeedLimit()
                 except Exception as e:
                     if self._stopping or self.task.status != TaskStatus.RUNNING:
                         raise CancelledError
@@ -338,7 +333,7 @@ class FtpStep(TaskStep):
                 client = None
                 stream = None
                 try:
-                    client = await ftpTask.connectionInfo.connect(ftpTask.proxies)
+                    client = await ftpTask.connectionInfo.connect()
                     stream = await client.download_stream(PurePosixPath(self.remotePath))
                     ftruncate(fd, 0)
                     subworker.receivedBytes = 0
@@ -347,9 +342,10 @@ class FtpStep(TaskStep):
                         if not chunk:
                             ftruncate(fd, subworker.receivedBytes)
                             return
-                        await cfg.waitForSpeedLimit()
                         pwrite(fd, chunk, subworker.receivedBytes)
                         subworker.receivedBytes += len(chunk)
+                        speedMeter.addSpeed(len(chunk))
+                        await speedMeter.waitForSpeedLimit()
                 except Exception as e:
                     if self._stopping or self.task.status != TaskStatus.RUNNING:
                         raise CancelledError
@@ -363,7 +359,7 @@ class FtpStep(TaskStep):
                 client = None
                 stream = None
                 try:
-                    client = await ftpTask.connectionInfo.connect(ftpTask.proxies)
+                    client = await ftpTask.connectionInfo.connect()
                     stream = await client.download_stream(
                         PurePosixPath(self.remotePath),
                         offset=subworker.position,
@@ -373,11 +369,12 @@ class FtpStep(TaskStep):
                         chunk = await stream.read(min(65536, remaining))
                         if not chunk:
                             raise RuntimeError("FTP 数据流提前结束")
-                        await cfg.waitForSpeedLimit()
                         pwrite(fd, chunk, subworker.position)
                         chunkSize = len(chunk)
                         subworker.receivedBytes += chunkSize
                         remaining -= chunkSize
+                        speedMeter.addSpeed(chunkSize)
+                        await speedMeter.waitForSpeedLimit()
                     break
                 except Exception as e:
                     if self._stopping or self.task.status != TaskStatus.RUNNING:
@@ -465,7 +462,6 @@ class FtpStep(TaskStep):
             shouldDeleteRecord = True
         except CancelledError:
             await self._stopSubworkerTasks()
-            self.setStatus(TaskStatus.PAUSED)
             raise
         finally:
             if not supervisor.done():
@@ -483,7 +479,6 @@ class FtpTask(Task):
     packId: str = "ftp"
     connectionInfo: FtpConnectionInfo
     sourceType: str = "file"
-    proxies: dict[str, str] | None = None
     stepType: type = field(default=FtpStep, repr=False)
 
     @property

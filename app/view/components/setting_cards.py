@@ -9,11 +9,14 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import (
     SettingCard, PushSettingCard, RangeConfigItem, SpinBox,
-    ExpandGroupSettingCard, ConfigItem, FluentIcon, BodyLabel,
+    ExpandGroupSettingCard, ConfigItem, FluentIcon, BodyLabel, CaptionLabel,
     RadioButton, ComboBox, LineEdit, ToolButton, ToolTipFilter,
+    PrimaryPushButton, InfoBar, InfoBarPosition,
+    IconWidget,
 )
 
-from app.config.cfg import cfg, proxies
+from app.config.cfg import cfg, proxyUrl
+from app.view.components.banners import WarningBanner
 
 
 class SpinBoxSettingCard(SettingCard):
@@ -101,6 +104,18 @@ class ProxySettingCard(ExpandGroupSettingCard):
         self.passEdit.setPlaceholderText(self.tr("密码（可选）"))
         self.passEdit.setEchoMode(LineEdit.EchoMode.Password)
 
+        self.compatBanner = WarningBanner(self.view)
+        self.compatBanner.setContentsMargins(48, 0, 44, 10)
+        bannerLayout = QHBoxLayout(self.compatBanner)
+        bannerLayout.setContentsMargins(10, 8, 10, 8)
+        bannerLayout.setSpacing(8)
+        bannerIcon = IconWidget(FluentIcon.INFO, self.compatBanner)
+        bannerIcon.setFixedSize(16, 16)
+        bannerLayout.addWidget(bannerIcon)
+        bannerLayout.addWidget(CaptionLabel(
+            self.tr("当前代理类型可能不适用于所有下载方式，SOCKS5 可兼容全部"), self.compatBanner,
+        ), 1)
+
         self._initLayout()
 
         value = configItem.value
@@ -116,6 +131,8 @@ class ProxySettingCard(ExpandGroupSettingCard):
             self._showProxyUrl(value)
 
         self.buttonGroup.buttonClicked.connect(self._onRadioClicked)
+        self.protocolCombo.currentTextChanged.connect(lambda _: self._refreshCompatBanner())
+        self._refreshCompatBanner()
 
     def _initLayout(self) -> None:
         self.addWidget(self.choiceLabel)
@@ -148,6 +165,7 @@ class ProxySettingCard(ExpandGroupSettingCard):
         self.addGroupWidget(self.radioWidget)
         self.addGroupWidget(self.customWidget)
         self.addGroupWidget(self.credWidget)
+        self.addGroupWidget(self.compatBanner)
 
     def _onRadioClicked(self, button) -> None:
         self.choiceLabel.setText(button.text())
@@ -158,26 +176,43 @@ class ProxySettingCard(ExpandGroupSettingCard):
 
         if button is self.autoRadio:
             cfg.set(self._configItem, "Auto")
-            detected = proxies()
-            url = next((detected.get(p) for p in ("https", "http", "ftp") if detected and detected.get(p)), None) if detected else None
-            self._showProxyUrl(url)
+            self._showProxyUrl(proxyUrl())
         elif button is self.offRadio:
             cfg.set(self._configItem, "Off")
+        self._refreshCompatBanner()
 
-    def _showProxyUrl(self, proxyUrl: str | None) -> None:
-        if not proxyUrl:
+    def _showProxyUrl(self, url: str | None) -> None:
+        if not url:
             self.protocolCombo.setCurrentText("")
             self.ipEdit.setText(self.tr("未检测到代理"))
             self.portEdit.setText("")
             self.userEdit.setText("")
             self.passEdit.setText("")
             return
-        parsed = urlsplit(proxyUrl)
+        parsed = urlsplit(url)
         self.protocolCombo.setCurrentText(parsed.scheme)
         self.ipEdit.setText(parsed.hostname or "")
         self.portEdit.setText(str(parsed.port or ""))
         self.userEdit.setText(parsed.username or "")
         self.passEdit.setText(parsed.password or "")
+
+    def _refreshCompatBanner(self) -> None:
+        if self.offRadio.isChecked():
+            self.compatBanner.setVisible(False)
+            return
+        if self.autoRadio.isChecked():
+            url = proxyUrl()
+            scheme = urlsplit(url).scheme.lower() if url else ""
+        else:
+            scheme = self.protocolCombo.currentText().lower()
+        if not scheme:
+            self.compatBanner.setVisible(False)
+            return
+        from app.services.feature_service import featureService
+        self.compatBanner.setVisible(any(
+            p.proxySchemes is not None and scheme not in p.proxySchemes
+            for p in featureService.packs
+        ))
 
     def _buildProxyUrl(self) -> str:
         protocol = self.protocolCombo.currentText()
@@ -234,36 +269,38 @@ class SelectFolderSettingCard(SettingCard):
 
 
 class ClientProfileSettingCard(SettingCard):
-    FAMILY_LABELS = {"chrome": "Chrome", "edge": "Edge", "firefox": "Firefox", "safari": "Safari", "okhttp": "OkHttp"}
 
     def __init__(self, parent=None):
         from qfluentwidgets import DropDownPushButton
+        from app.client import toProfileLabel
         super().__init__(FluentIcon.ROBOT, self.tr("模拟身份"), self.tr("浏览器 TLS 指纹与 User-Agent"), parent)
-        self.button = DropDownPushButton(self._label(cfg.clientProfile.value), self)
+        self.button = DropDownPushButton(toProfileLabel(cfg.clientProfile.value), self)
         self._initWidget()
         self._initLayout()
         self._bind()
 
     def _initWidget(self) -> None:
         from qfluentwidgets import Action, RoundMenu
-        from app.client import profileFamilies, profileVersions
+        from app.client import (
+            PROFILE_FAMILY_LABELS, profileFamilies, profileVersions, toProfileLabel,
+        )
 
         self.button.setMinimumWidth(200)
         menu = RoundMenu(parent=self)
 
         for value, icon in (("auto", FluentIcon.ROBOT), ("raw", FluentIcon.CANCEL)):
-            action = Action(icon, self._label(value), self)
+            action = Action(icon, toProfileLabel(value), self)
             action.triggered.connect(lambda checked=False, v=value: self._onPick(v))
             menu.addAction(action)
 
         for family in profileFamilies():
-            submenu = RoundMenu(self.FAMILY_LABELS.get(family, family), self)
-            latest = Action(self._label(family), self)
+            submenu = RoundMenu(PROFILE_FAMILY_LABELS.get(family, family), self)
+            latest = Action(toProfileLabel(family), self)
             latest.triggered.connect(lambda checked=False, v=family: self._onPick(v))
             submenu.addAction(latest)
             submenu.addSeparator()
             for name in profileVersions(family):
-                action = Action(self._label(name), self)
+                action = Action(toProfileLabel(name), self)
                 action.triggered.connect(lambda checked=False, v=name: self._onPick(v))
                 submenu.addAction(action)
             menu.addMenu(submenu)
@@ -275,21 +312,11 @@ class ClientProfileSettingCard(SettingCard):
         self.hBoxLayout.addSpacing(16)
 
     def _bind(self) -> None:
-        cfg.clientProfile.valueChanged.connect(lambda v: self.button.setText(self._label(v)))
+        from app.client import toProfileLabel
+        cfg.clientProfile.valueChanged.connect(lambda v: self.button.setText(toProfileLabel(v)))
 
     def _onPick(self, value: str) -> None:
         cfg.set(cfg.clientProfile, value)
-
-    def _label(self, value: str) -> str:
-        if value in {"", "auto"}:
-            return self.tr("自动（匹配来源）")
-        if value == "raw":
-            return self.tr("不模拟（原样发送）")
-        if value in self.FAMILY_LABELS:
-            return f"{self.FAMILY_LABELS[value]}（最新）"
-        head = value.rstrip("0123456789_")
-        version = value[len(head):].replace("_", ".")
-        return f"{head} {version}" if version else value
 
 
 class DefaultHeadersSettingCard(PushSettingCard):
@@ -312,3 +339,122 @@ class DefaultHeadersSettingCard(PushSettingCard):
             headers = headersFromText(edit.toPlainText())
             if headers:
                 cfg.set(cfg.defaultRequestHeaders, headers)
+
+
+class SelectFileCard(SettingCard):
+    pathChanged = Signal(str)
+
+    def __init__(self, configItem: ConfigItem, icon, title: str, hint: str,
+                 browseTitle: str, parent=None):
+        super().__init__(icon, title, configItem.value or hint, parent)
+        self._configItem = configItem
+        self._hint = hint
+        self._browseTitle = browseTitle
+
+        self.chooseFileButton = ToolButton(FluentIcon.FOLDER, self)
+        self.clearButton = ToolButton(FluentIcon.CANCEL, self)
+        self.chooseFileButton.setToolTip(self.tr("选择文件"))
+        self.chooseFileButton.installEventFilter(ToolTipFilter(self.chooseFileButton))
+        self.clearButton.setToolTip(self.tr("清除路径"))
+        self.clearButton.installEventFilter(ToolTipFilter(self.clearButton))
+
+        self.hBoxLayout.addWidget(self.chooseFileButton, 0, Qt.AlignmentFlag.AlignRight)
+        self.hBoxLayout.addSpacing(8)
+        self.hBoxLayout.addWidget(self.clearButton, 0, Qt.AlignmentFlag.AlignRight)
+        self.hBoxLayout.addSpacing(16)
+
+        self.chooseFileButton.clicked.connect(self._onChooseFile)
+        self.clearButton.clicked.connect(lambda: self._setPath(""))
+
+    def _onChooseFile(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self.window(), self._browseTitle)
+        if path:
+            self._setPath(path)
+
+    def _setPath(self, path: str) -> None:
+        cfg.set(self._configItem, path)
+        self.setContent(path or self._hint)
+        self.pathChanged.emit(path)
+
+
+class RuntimeCard(SettingCard):
+
+    def __init__(self, runtime, parent=None):
+        from app.models.pack import BinaryRuntime
+        self._runtime: BinaryRuntime = runtime
+        super().__init__(FluentIcon.INFO, runtime.name, self.tr("正在检测运行时..."), parent)
+
+        self.installButton = PrimaryPushButton(self.tr("一键安装"), self)
+        self.refreshButton = ToolButton(FluentIcon.SYNC, self)
+
+        self._initWidget()
+        self._initLayout()
+        self._bind()
+
+    def _initWidget(self) -> None:
+        self.refreshButton.setToolTip(self.tr("刷新"))
+        self.refreshButton.installEventFilter(ToolTipFilter(self.refreshButton))
+
+    def _initLayout(self) -> None:
+        self.hBoxLayout.addWidget(self.installButton, 0, Qt.AlignmentFlag.AlignRight)
+        self.hBoxLayout.addSpacing(8)
+        self.hBoxLayout.addWidget(self.refreshButton, 0, Qt.AlignmentFlag.AlignRight)
+        self.hBoxLayout.addSpacing(16)
+
+    def _bind(self) -> None:
+        self.installButton.clicked.connect(self._onInstallClicked)
+        self.refreshButton.clicked.connect(self.refreshStatus)
+
+    def refreshStatus(self) -> None:
+        from app.services.coroutine_runner import coroutineRunner
+
+        self.refreshButton.setEnabled(False)
+        self.setContent(self.tr("正在检测运行时..."))
+        coroutineRunner.submit(
+            self._runtime.probeVersion(),
+            done=self._onProbeFinished,
+            failed=self._onProbeFailed,
+        )
+
+    def _onProbeFinished(self, version: str) -> None:
+        self.refreshButton.setEnabled(True)
+        path = self._runtime.path()
+        if version and path:
+            self.setContent(self.tr("版本: {0}\n路径: {1}").format(version, path))
+        elif path:
+            self.setContent(self.tr("路径: {0}").format(path))
+        else:
+            self.setContent(self.tr("未检测到可用的 {0}").format(self._runtime.name))
+
+    def _onProbeFailed(self, error: str) -> None:
+        self.refreshButton.setEnabled(True)
+        self.setContent(self.tr("检测运行时失败"))
+
+    def _onInstallClicked(self) -> None:
+        from app.services.coroutine_runner import coroutineRunner
+
+        self.installButton.setEnabled(False)
+        self.installButton.setText(self.tr("准备中..."))
+        coroutineRunner.submit(
+            self._runtime.installTask(),
+            done=self._onInstallTaskCreated,
+            failed=self._onInstallTaskFailed,
+        )
+
+    def _onInstallTaskCreated(self, task) -> None:
+        from app.services.task_service import taskService
+
+        self.installButton.setEnabled(True)
+        self.installButton.setText(self.tr("一键安装"))
+        taskService.add(task)
+
+    def _onInstallTaskFailed(self, error: str) -> None:
+        self.installButton.setEnabled(True)
+        self.installButton.setText(self.tr("一键安装"))
+        InfoBar.error(
+            self.tr("安装失败"),
+            error,
+            duration=-1,
+            position=InfoBarPosition.TOP,
+            parent=self.window(),
+        )

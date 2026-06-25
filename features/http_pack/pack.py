@@ -28,7 +28,7 @@ class HttpParser(TaskParser):
     async def parse(self, options: TaskOptions) -> Task:
         url = options.url
         headers = dict(options.headers)
-        currentProxies = options.proxies
+        clientProfile = options.clientProfile
         subworkerCount = options.subworkerCount
         outputFolder = options.outputFolder
 
@@ -45,7 +45,7 @@ class HttpParser(TaskParser):
                 options.clientProfile or cfg.clientProfile.value,
                 options.sourceUserAgent,
             )
-            client = buildClient(currentProxies, emulation=emulation)
+            client = buildClient(emulation=emulation)
 
             def rangeTotal(h: dict) -> int:
                 cr = h.get("content-range", "")
@@ -77,15 +77,16 @@ class HttpParser(TaskParser):
                     probeHeaders["range"] = rangeValue
                 response = await client.get(url, headers=probeHeaders)
                 try:
-                    if response.status_code not in {200, 206, 416}:
+                    status = response.status.as_int()
+                    if status not in {200, 206, 416}:
                         response.raise_for_status()
                     return (
-                        response.status_code,
-                        {k.lower(): v for k, v in response.headers.items()},
+                        status,
+                        {k.decode().lower(): v.decode() for k, v in response.headers},
                         str(response.url),
                     )
                 finally:
-                    await response.aclose()
+                    response.close()
 
             try:
                 statusCode, responseHeaders, finalUrl = await request("bytes=1-1")
@@ -163,7 +164,7 @@ class HttpParser(TaskParser):
 
                 name = toSafeFilename(name, fallback=f"file_{time_ns()}")
             finally:
-                await client.aclose()
+                client.close()
 
         task = HttpTask(
             name=name,
@@ -176,7 +177,7 @@ class HttpParser(TaskParser):
             url=url,
             fileSize=fileSize,
             headers=headers,
-            proxies=currentProxies or {},
+            clientProfile=clientProfile,
             subworkerCount=subworkerCount,
             canUseRangeRequests=canUseRangeRequests,
         ))
@@ -188,6 +189,19 @@ class HttpPack(FeaturePack):
 
     def parsers(self):
         return [HttpParser()]
+
+    def optionCards(self, task, parent=None):
+        from app.view.components.option_cards import (
+            ClientProfileCard, SelectFolderCard, SubworkerCountCard,
+        )
+        step = task.steps[0] if task.steps else None
+        if not isinstance(step, HttpTaskStep):
+            return []
+        return [
+            SelectFolderCard(parent, initial=task.outputFolder),
+            ClientProfileCard(parent, initial=step.clientProfile),
+            SubworkerCountCard(parent, initial=step.subworkerCount),
+        ]
 
     def taskCard(self, task, parent=None):
         from .cards import HttpTaskCard

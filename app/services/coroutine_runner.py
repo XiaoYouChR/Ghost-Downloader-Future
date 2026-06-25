@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Callable
+from uuid import uuid4
 
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QApplication
@@ -23,7 +24,7 @@ class CoroutineRunner(QThread):
         self._loop.close()
 
     def submit(self, work, done: Callable = None, failed: Callable = None, *args, **kwargs) -> str:
-        workId = f"custom_{id(done)}_{hash(work)}"
+        workId = f"wrk_{uuid4().hex}"
         self._pending[workId] = (done, failed, args, kwargs)
 
         async def execute():

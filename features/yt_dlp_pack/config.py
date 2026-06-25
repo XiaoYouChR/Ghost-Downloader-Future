@@ -19,10 +19,10 @@ class YtDlpConfig(PackConfig):
 
     def setupSettings(self, settingPage):
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
-        from app.view.components.setting_cards import InstallFolderCard, RuntimeCard
+        from app.view.components.setting_cards import SelectFolderSettingCard, RuntimeCard
 
         self.group = CollapsibleSettingCardGroup(self.tr("YouTube 下载"), "ytdlp", settingPage.container)
-        self.installFolderCard = InstallFolderCard(
+        self.installFolderCard = SelectFolderSettingCard(
             ytDlpConfig.installFolder, f"{APP_DATA_DIR}/YtDlp",
             self.tr("yt-dlp 安装目录"), self.tr("选择 yt-dlp 安装目录"),
             self.group,
@@ -63,9 +63,9 @@ class YtDlpRuntime(BinaryRuntime):
         try:
             response = await client.get(RELEASE_API)
             response.raise_for_status()
-            release = response.json()
+            release = await response.json()
         finally:
-            await client.aclose()
+            client.close()
 
         assets = release.get("assets")
         if not isinstance(assets, list):
@@ -90,7 +90,6 @@ class YtDlpRuntime(BinaryRuntime):
             packId="ytdlp",
             fileSize=fileSize,
             outputFolder=installFolder,
-            usesSlot=False,
             installFolder=str(installFolder),
         )
         task.addStep(HttpTaskStep(
@@ -98,7 +97,6 @@ class YtDlpRuntime(BinaryRuntime):
             url=downloadUrl,
             fileSize=fileSize,
             headers=dict(cfg.defaultRequestHeaders.value),
-            proxies={},
             subworkerCount=cfg.preBlockNum.value,
             canUseRangeRequests=True,
             outputFile=binaryPath,

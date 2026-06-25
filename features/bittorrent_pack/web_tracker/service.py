@@ -40,9 +40,9 @@ class TrackerService:
             try:
                 response = await client.get(normalized)
                 response.raise_for_status()
-                text = response.text
+                text = await response.text()
             finally:
-                await client.aclose()
+                client.close()
             trackers = [
                 t for t in text.split()
                 if (p := urlsplit(t)).scheme.lower() in TRACKER_SCHEMES and p.netloc

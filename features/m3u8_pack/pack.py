@@ -38,7 +38,6 @@ class M3U8Parser(TaskParser):
     async def parse(self, options: TaskOptions) -> Task:
         url = options.url.strip()
         headers = dict(options.headers)
-        proxies = options.proxies
         outputFolder = options.outputFolder
 
         localPath = localFilePath(url, MANIFEST_SUFFIXES)
@@ -54,15 +53,15 @@ class M3U8Parser(TaskParser):
                 options.clientProfile or cfg.clientProfile.value,
                 options.sourceUserAgent,
             )
-            client = buildClient(proxies, emulation=emulation, headers=headers)
+            client = buildClient(emulation=emulation, headers=headers)
             try:
                 response = await client.get(url)
                 response.raise_for_status()
-                body = response.text
-                responseHeaders = {k.lower(): v for k, v in response.headers.items()}
+                body = await response.text()
+                responseHeaders = {k.decode().lower(): v.decode() for k, v in response.headers}
                 manifestUrl = str(response.url)
             finally:
-                await client.aclose()
+                client.close()
 
         loweredUrl = manifestUrl.lower()
         contentType = responseHeaders.get("content-type", "").lower()
@@ -83,7 +82,7 @@ class M3U8Parser(TaskParser):
                 variantUrl = playlist.playlists[0].absolute_uri or ""
                 if variantUrl.lower().startswith(("http://", "https://")):
                     try:
-                        variantClient = buildClient(proxies, emulation=toEmulation(
+                        variantClient = buildClient(emulation=toEmulation(
                             options.clientProfile or cfg.clientProfile.value,
                             options.sourceUserAgent,
                         ), headers=headers)
@@ -92,7 +91,7 @@ class M3U8Parser(TaskParser):
                             variantResponse.raise_for_status()
                             variantBody = variantResponse.text
                         finally:
-                            await variantClient.aclose()
+                            variantClient.close()
                         isLive = not m3u8.loads(variantBody, uri=variantUrl).is_endlist
                     except Exception as e:
                         logger.warning("取变体清单判活失败, 按点播处理: {}", repr(e))
@@ -148,7 +147,7 @@ class M3U8Parser(TaskParser):
         step = M3U8TaskStep(
             stepIndex=1,
             headers=headers,
-            proxies=proxies if isinstance(proxies, dict) else {},
+
             threadCount=m3u8Config.threadCount.value,
             retryCount=m3u8Config.retryCount.value,
             requestTimeout=m3u8Config.requestTimeout.value,

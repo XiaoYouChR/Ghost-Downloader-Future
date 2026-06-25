@@ -28,13 +28,6 @@ class FtpFileSelectDialog(FileSelectDialog):
 
 
 class FtpDraftCard(UniversalDraftCard):
-    def __init__(self, task: FtpTask, parent=None):
-        super().__init__(task, parent)
-        self._selectFilesButton = None
-        if task.files and len(task.files) > 1:
-            from qfluentwidgets import PrimaryPushButton
-            self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
-            self._selectFilesButton.clicked.connect(self._onSelectFilesClicked)
 
     @property
     def task(self) -> FtpTask:
@@ -42,14 +35,20 @@ class FtpDraftCard(UniversalDraftCard):
 
     def _initWidget(self):
         super()._initWidget()
-        if self.task.isFolder:
-            icon = QFileIconProvider().icon(QFileIconProvider.IconType.Folder)
-            self.iconLabel.setPixmap(icon.pixmap(20, 20))
+        self._selectFilesButton = None
+        if self.task.files and len(self.task.files) > 1:
+            from qfluentwidgets import PrimaryPushButton
+            self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
 
     def _initLayout(self):
         super()._initLayout()
         if self._selectFilesButton is not None:
-            self.hBoxLayout.addWidget(self._selectFilesButton)
+            self.layout().addWidget(self._selectFilesButton)
+
+    def _bind(self):
+        super()._bind()
+        if self._selectFilesButton is not None:
+            self._selectFilesButton.clicked.connect(self._onSelectFilesClicked)
 
     def _refreshSummary(self):
         if not self.task.files or len(self.task.files) <= 1:
@@ -88,20 +87,15 @@ class FtpTaskCard(UniversalTaskCard):
         )
         self.selectFilesButton.clicked.connect(self._onSelectFilesClicked)
 
-    def statusInfoText(self) -> str | None:
-        if self.task.status == TaskStatus.PAUSED:
-            return super().statusInfoText()
-        if self.task.status in {TaskStatus.WAITING, TaskStatus.COMPLETED}:
-            if self.task.files and len(self.task.files) > 1:
-                selected = sum(1 for f in self.task.files if f.selected)
-                return self.tr("{0}/{1} 个文件").format(selected, len(self.task.files))
-        return super().statusInfoText()
-
     def refresh(self):
         super().refresh()
         hasMultipleFiles = self.task.files and len(self.task.files) > 1
         self.selectFilesButton.setVisible(hasMultipleFiles)
         self.selectFilesButton.setEnabled(self.task.status != TaskStatus.RUNNING)
+
+        if self.task.status in {TaskStatus.WAITING, TaskStatus.COMPLETED} and hasMultipleFiles:
+            selected = sum(1 for f in self.task.files if f.selected)
+            self.statusLabel.setText(self.tr("{0}/{1} 个文件").format(selected, len(self.task.files)))
 
     def _onSelectFilesClicked(self):
         if self.task.status == TaskStatus.RUNNING:

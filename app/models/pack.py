@@ -81,6 +81,7 @@ class BinaryRuntime:
 class FeaturePack:
     packId: str = ""
     config: PackConfig | None = None
+    proxySchemes: set[str] | None = None
 
     def parsers(self) -> list[TaskParser]:
         return []

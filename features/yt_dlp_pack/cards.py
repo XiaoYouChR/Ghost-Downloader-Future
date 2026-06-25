@@ -16,9 +16,6 @@ QUALITY_TIERS = (
 class YtDlpDraftCard(UniversalDraftCard):
     optionsChanged = Signal()
 
-    def __init__(self, task, parent=None):
-        super().__init__(task, parent)
-
     def _initWidget(self):
         super()._initWidget()
         self.qualityCombo = ComboBox(self)
@@ -29,7 +26,7 @@ class YtDlpDraftCard(UniversalDraftCard):
 
     def _initLayout(self):
         super()._initLayout()
-        self.hBoxLayout.insertWidget(self.hBoxLayout.count() - 1, self.qualityCombo)
+        self.layout().insertWidget(self.layout().count() - 1, self.qualityCombo)
 
     def _bind(self):
         super()._bind()

@@ -64,6 +64,7 @@ class MacStatusItem:
 
     def _buildMenu(self) -> NSMenu:
         menu = NSMenu.alloc().init()
+        menu.setAutoenablesItems_(False)
         for title, selector in (
             (tr("仪表盘"), "showDashboard:"),
             (tr("全部开始"), "startAll:"),

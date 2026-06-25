@@ -8,7 +8,7 @@ from typing import Any
 import niquests
 from PySide6.QtCore import QVersionNumber
 
-from app.config.cfg import cfg, proxies
+from app.config.cfg import cfg, proxyUrl
 from app.config.constants import VERSION
 
 RELEASE_API = "https://api.github.com/repos/XiaoYouChR/Ghost-Downloader-3/releases/latest"
@@ -63,9 +63,10 @@ class Release:
 async def fetchRelease() -> Release:
     async with niquests.AsyncSession(timeout=30, happy_eyeballs=True) as session:
         session.trust_env = False
+        url = proxyUrl()
         response = await session.get(
             RELEASE_API,
-            proxies=proxies(),
+            proxies={"https": url} if url else None,
             verify=cfg.shouldVerifySsl.value,
             allow_redirects=True,
         )

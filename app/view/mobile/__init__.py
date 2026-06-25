@@ -1,13 +1,14 @@
-def applyPatches() -> None:
-    from .dialog_patch import patchFileDialogs, patchMessageBoxWidth
-    from .fluent_patch import patchAndroidMenus, patchFluentIconRendering
-    from .theme_runtime import setSystemFont, setSystemTheme
-    from .touch_runtime import patchCollapsibleGroupTouch
+def setupAndroid() -> None:
+    from .device import setupFont, setupTheme
+    from .patches import (
+        patchDialogWidth, patchFileDialogs, patchGroupTouch,
+        patchIconRendering, patchMenus,
+    )
 
-    setSystemTheme()
-    setSystemFont()
-    patchFluentIconRendering()
+    setupTheme()
+    setupFont()
+    patchIconRendering()
     patchFileDialogs()
-    patchMessageBoxWidth()
-    patchCollapsibleGroupTouch()
-    patchAndroidMenus()
+    patchDialogWidth()
+    patchGroupTouch()
+    patchMenus()

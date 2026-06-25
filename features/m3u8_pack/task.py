@@ -37,7 +37,6 @@ class M3U8Task(Task):
 @dataclass(kw_only=True)
 class M3U8TaskStep(TaskStep):
     headers: dict[str, str] = field(default_factory=dict)
-    proxies: dict[str, str] = field(default_factory=dict)
     threadCount: int = 8
     retryCount: int = 3
     requestTimeout: int = 100
@@ -135,12 +134,13 @@ class M3U8TaskStep(TaskStep):
         if self.shouldOmitDateInfo:
             args.append("--no-date-info=true")
 
-        proxyUrl = next((v for v in self.proxies.values() if v), "")
-        if proxyUrl.startswith("socks5h://"):
-            proxyUrl = "socks5://" + proxyUrl[len("socks5h://"):]
+        from app.config.cfg import proxyUrl
+        proxy = proxyUrl()
+        if proxy and proxy.startswith("socks5h://"):
+            proxy = "socks5://" + proxy[len("socks5h://"):]
         args.append("--use-system-proxy=false")
-        if proxyUrl:
-            args.append(f"--custom-proxy={proxyUrl}")
+        if proxy:
+            args.append(f"--custom-proxy={proxy}")
 
         from ffmpeg_pack.config import ffmpegRuntime
         ffmpegPath = ffmpegRuntime.path()

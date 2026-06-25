@@ -5,10 +5,10 @@ from qfluentwidgets import (
 )
 
 
+from app.services.plan import PlanAction
+
+
 class PlanTaskDialog(MessageBoxBase):
-    SHUTDOWN = 0
-    RESTART = 1
-    OPEN_FILE = 2
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,15 +79,15 @@ class PlanTaskDialog(MessageBoxBase):
 
     def selectedAction(self) -> int:
         if self.radioGroup.checkedButton() is self.restartButton:
-            return self.RESTART
+            return PlanAction.RESTART
         if self.radioGroup.checkedButton() is self.openFileButton:
-            return self.OPEN_FILE
-        return self.SHUTDOWN
+            return PlanAction.OPEN_FILE
+        return PlanAction.SHUTDOWN
 
     def selectedFilePath(self) -> str:
         return self.pathEdit.text().strip()
 
     def validate(self) -> bool:
-        if self.selectedAction() == self.OPEN_FILE and not self.selectedFilePath():
+        if self.selectedAction() == PlanAction.OPEN_FILE and not self.selectedFilePath():
             return False
         return True

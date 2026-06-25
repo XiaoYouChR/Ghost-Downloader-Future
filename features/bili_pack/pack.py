@@ -22,7 +22,6 @@ class BilibiliParser(TaskParser):
 
     async def parse(self, options: TaskOptions) -> Task:
         url = options.url
-        proxies = options.proxies
         subworkerCount = options.subworkerCount
         outputFolder = options.outputFolder
 
@@ -43,7 +42,7 @@ class BilibiliParser(TaskParser):
             options.clientProfile or cfg.clientProfile.value,
             options.sourceUserAgent,
         )
-        client = buildClient(proxies, emulation=emulation, headers=headers)
+        client = buildClient(emulation=emulation, headers=headers)
 
         try:
             videoIdMatch = re.match(r"/video/(BV[a-zA-Z0-9]+|av\d+)", parsed.path)
@@ -73,7 +72,7 @@ class BilibiliParser(TaskParser):
 
             response = await client.get(viewApiUrl)
             response.raise_for_status()
-            viewPayload = response.json()
+            viewPayload = await response.json()
             if viewPayload.get("code") not in {None, 0}:
                 raise ValueError(viewPayload.get("message") or "获取 Bilibili 视频信息失败")
 
@@ -133,7 +132,7 @@ class BilibiliParser(TaskParser):
 
                 response = await client.get(playApiUrl)
                 response.raise_for_status()
-                playPayload = response.json()
+                playPayload = await response.json()
                 if playPayload.get("code") not in {None, 0}:
                     raise ValueError(playPayload.get("message") or "获取 Bilibili 音视频流失败")
 
@@ -179,7 +178,7 @@ class BilibiliParser(TaskParser):
                     url=info["videoUrl"],
                     fileSize=info["videoSize"],
                     headers=dict(headers),
-                    proxies=proxies or {},
+
                     subworkerCount=subworkerCount,
                     canUseRangeRequests=True,
                     pageIndex=index,
@@ -190,7 +189,7 @@ class BilibiliParser(TaskParser):
                     url=info["audioUrl"],
                     fileSize=info["audioSize"],
                     headers=dict(headers),
-                    proxies=proxies or {},
+
                     subworkerCount=subworkerCount,
                     canUseRangeRequests=True,
                     pageIndex=index,
@@ -204,7 +203,7 @@ class BilibiliParser(TaskParser):
 
             return task
         finally:
-            await client.aclose()
+            client.close()
 
     def _selectStream(
         self,
@@ -245,14 +244,14 @@ class BilibiliParser(TaskParser):
         response = await client.get(url, headers={**headers, "range": "bytes=0-0"})
         try:
             response.raise_for_status()
-            head = {k.lower(): v for k, v in response.headers.items()}
-            if response.status_code == 206 and "content-range" in head:
+            head = {k.decode().lower(): v.decode() for k, v in response.headers}
+            if response.status.as_int() == 206 and "content-range" in head:
                 _, _, total = head["content-range"].rpartition("/")
                 if total != "*":
                     return int(total)
             raise ValueError("音视频流不支持范围请求，当前实现无法下载")
         finally:
-            await response.aclose()
+            response.close()
 
 
 class BilibiliPack(FeaturePack):

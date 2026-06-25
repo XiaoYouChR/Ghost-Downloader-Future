@@ -18,7 +18,8 @@ from qfluentwidgets import (
 
 from app.config.cfg import ConfigItem
 from app.models.pack import PackConfig
-from .account import bilibiliAccount, toCookie
+
+
 class ScanLoginDialog(MessageBoxBase):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -48,10 +49,12 @@ class ScanLoginDialog(MessageBoxBase):
         self.viewLayout.addWidget(self.refreshButton, 0, Qt.AlignmentFlag.AlignCenter)
 
     def _bind(self):
+        from .account import bilibiliAccount
         self.refreshButton.clicked.connect(self.reloadQrCode)
         bilibiliAccount.qrStateChanged.connect(self._onQrState)
 
     def reloadQrCode(self):
+        from .account import bilibiliAccount
         self.statusLabel.setText(self.tr("正在获取二维码..."))
         bilibiliAccount.startQrLogin()
 
@@ -67,6 +70,7 @@ class ScanLoginDialog(MessageBoxBase):
             self.statusLabel.setText(text or str(statusCode))
 
     def done(self, code):
+        from .account import bilibiliAccount
         bilibiliAccount.cancelQrLogin()
         super().done(code)
 class EditCookieDialog(MessageBoxBase):
@@ -116,12 +120,14 @@ class BilibiliLoginSettingCard(SettingCard):
         self.hBoxLayout.addSpacing(16)
 
     def _bind(self):
+        from .account import bilibiliAccount
         self.scanButton.clicked.connect(self._onScanLogin)
         self.editButton.clicked.connect(self._onEditCookie)
         self.logoutButton.clicked.connect(self._onLogout)
         bilibiliAccount.accountChanged.connect(self.refreshLoginInfo)
 
     def refreshLoginInfo(self):
+        from .account import bilibiliAccount
         if bilibiliAccount.isLoggedIn:
             name = bilibiliAccount.username or self.tr("已登录")
             self.setContent(self.tr("状态：已登录 · {0}").format(name))
@@ -130,6 +136,7 @@ class BilibiliLoginSettingCard(SettingCard):
         self.logoutButton.setEnabled(bilibiliAccount.isLoggedIn)
 
     def _setButtonsEnabled(self, enabled: bool):
+        from .account import bilibiliAccount
         self.scanButton.setEnabled(enabled)
         self.editButton.setEnabled(enabled)
         self.logoutButton.setEnabled(enabled and bilibiliAccount.isLoggedIn)
@@ -141,6 +148,7 @@ class BilibiliLoginSettingCard(SettingCard):
         self.refreshLoginInfo()
 
     def _onEditCookie(self):
+        from .account import bilibiliAccount, toCookie
         dialog = EditCookieDialog(self.window(), bilibiliAccount.cookie)
         if dialog.exec():
             cookie = toCookie(dialog.cookieTextEdit.toPlainText())
@@ -148,6 +156,7 @@ class BilibiliLoginSettingCard(SettingCard):
         dialog.deleteLater()
 
     def _onLogout(self):
+        from .account import bilibiliAccount
         self._setButtonsEnabled(False)
         bilibiliAccount.logout()
 class CookieValidator:

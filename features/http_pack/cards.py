@@ -95,8 +95,8 @@ class SegmentedProgressBar(QWidget):
 
 
 class HttpTaskCard(UniversalTaskCard):
-    def createProgressBar(self) -> QWidget:
+    def _buildProgressBar(self) -> QWidget:
         step = self.task.steps[0] if self.task.steps else None
         if isinstance(step, HttpTaskStep) and step.canUseRangeRequests and step.subworkerCount > 1:
             return SegmentedProgressBar(step, self)
-        return super().createProgressBar()
+        return super()._buildProgressBar()

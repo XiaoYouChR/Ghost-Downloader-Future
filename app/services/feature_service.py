@@ -29,12 +29,15 @@ class FeatureService(QObject):
         for pack in loadPacks(executableDir / "features"):
             self._register(pack)
 
+    def start(self) -> None:
+        for pack in self._packs:
+            pack.start()
+
     def _register(self, pack: FeaturePack) -> None:
         self._packs.append(pack)
         self._packByPackId[pack.packId] = pack
         self._parsers.extend(pack.parsers())
         self._parsers.sort(key=lambda p: p.priority)
-        pack.start()
         if pack.config:
             toggle = pack.config.fileAssociationToggle()
             if toggle:

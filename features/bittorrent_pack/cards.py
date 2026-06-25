@@ -7,6 +7,7 @@ from app.models.task import TaskStatus
 from app.view.cards.draft_cards import UniversalDraftCard
 from app.view.cards.task_cards import UniversalTaskCard
 from app.view.dialogs.file_select import FileSelectDialog
+from .session import btSession
 from .task import BTTask
 
 
@@ -32,8 +33,6 @@ class TorrentFileSelectDialog(FileSelectDialog):
 
 
 class BTDraftCard(UniversalDraftCard):
-    def __init__(self, task: BTTask, parent=None):
-        super().__init__(task, parent)
 
     @property
     def task(self) -> BTTask:
@@ -43,16 +42,19 @@ class BTDraftCard(UniversalDraftCard):
         super()._initWidget()
         icon = QFileIconProvider.IconType.File if self.task.isSingleFile else QFileIconProvider.IconType.Folder
         self.iconLabel.setPixmap(QFileIconProvider().icon(icon).pixmap(20, 20))
+        self._selectFilesButton = None
+        if len(self.task.files) > 1:
+            self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
 
     def _initLayout(self):
         super()._initLayout()
-        if len(self.task.files) > 1:
-            self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
-            self._selectFilesButton.clicked.connect(self._onSelectFilesClicked)
-            self.hBoxLayout.addWidget(self._selectFilesButton)
+        if self._selectFilesButton is not None:
+            self.layout().addWidget(self._selectFilesButton)
 
     def _bind(self):
         super()._bind()
+        if self._selectFilesButton is not None:
+            self._selectFilesButton.clicked.connect(self._onSelectFilesClicked)
 
     def _refreshSummary(self):
         self.summaryLabel.setText(
@@ -78,14 +80,26 @@ class BTTaskCard(UniversalTaskCard):
             self.selectFilesButton,
         )
         self.selectFilesButton.clicked.connect(self._onSelectFilesClicked)
+        btSession.seedingUpdated.connect(self._onSeedingUpdated)
 
     def _refreshTransferInfo(self):
-        if self.task.status == TaskStatus.RUNNING:
-            self.speedLabel.setText(f"{toReadableSize(self.task.downloadRate)}/s")
-            if self.task.fileSize > 0 and self.task.downloadRate > 0 and not self.task.isSeeding:
-                remaining = self.task.fileSize - self.task.step.receivedBytes
-                self.leftTimeLabel.setText(toReadableTime(int(remaining / self.task.downloadRate)))
+        task = self.task
+        if task.status == TaskStatus.RUNNING:
+            self.speedLabel.setText(f"{toReadableSize(task.downloadRate)}/s")
+            if task.fileSize > 0 and task.downloadRate > 0 and not task.isSeeding:
+                remaining = task.fileSize - task.step.receivedBytes
+                self.etaLabel.setText(toReadableTime(int(remaining / task.downloadRate)))
             self.speedLabel.show()
+        elif task.status == TaskStatus.COMPLETED and task.isSeeding:
+            parts = [f"↑ {toReadableSize(task.uploadRate)}/s"]
+            parts.append(self.tr("分享率 {0}").format(f"{task.shareRatioPercent:.1f}%"))
+            if task.peerCount > 0:
+                parts.append(self.tr("{0} peers").format(task.peerCount))
+            self.statusLabel.setText(self.tr("做种中") + "  " + "  ".join(parts))
+
+    def _onSeedingUpdated(self):
+        if self.task.status == TaskStatus.COMPLETED and self.task.isSeeding:
+            self._refreshTransferInfo()
 
     def _onSelectFilesClicked(self):
         previousSelected = {f.index for f in self.task.files if f.selected}

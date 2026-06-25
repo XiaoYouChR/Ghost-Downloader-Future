@@ -12,14 +12,7 @@ from app.view.components.editors import AutoSizingEdit
 
 
 class M3U8DraftCard(UniversalDraftCard):
-    def _initWidget(self):
-        super()._initWidget()
-
-    def _initLayout(self):
-        super()._initLayout()
-
-    def _onNameEdited(self):
-        self.task.setName(self.nameEdit.text())
+    pass
 
 
 class M3U8TaskCard(UniversalTaskCard):
@@ -34,7 +27,7 @@ class M3U8LiveTaskCard(UniversalTaskCard):
         if step is not None:
             self.statusLabel.setText(step.liveStatus or step.lastMessage or "")
 
-    def _refreshToggleButton(self):
+    def _refreshButtons(self):
         pass
 
 

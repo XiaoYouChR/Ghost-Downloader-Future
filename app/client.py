@@ -9,7 +9,7 @@ from wreq import Client, Emulation, Proxy
 from wreq.emulation import Platform, Profile
 from wreq.redirect import Policy
 
-from app.config.cfg import cfg
+from app.config.cfg import cfg, proxyUrl
 
 FALLBACK_PROFILE = "chrome"
 
@@ -72,7 +72,6 @@ def toEmulation(profile: str, sourceUa: str = "") -> Emulation | None:
 
 
 def buildClient(
-    proxies: dict | None = None,
     *,
     emulation: Emulation | None = ...,
     headers: dict | None = None,
@@ -81,10 +80,9 @@ def buildClient(
     resolved = toEmulation("") if emulation is ... else emulation
     config: dict = {"tls_verify": cfg.shouldVerifySsl.value, "redirect": Policy.limited(10)}
 
-    if proxies:
-        url = next((v for v in proxies.values() if v), "")
-        if url:
-            config["proxies"] = [Proxy.all(url)]
+    url = proxyUrl()
+    if url:
+        config["proxies"] = [Proxy.all(url)]
 
     if resolved is not None:
         config["emulation"] = resolved
@@ -116,6 +114,24 @@ def profileFamilies() -> list[str]:
 
 def profileVersions(family: str) -> list[str]:
     return [name for name, _ver, _profile in PROFILES_BY_FAMILY.get(family, [])]
+
+
+PROFILE_FAMILY_LABELS = {
+    "chrome": "Chrome", "edge": "Edge", "firefox": "Firefox",
+    "safari": "Safari", "okhttp": "OkHttp",
+}
+
+
+def toProfileLabel(value: str) -> str:
+    if value in {"", "auto"}:
+        return "自动（匹配来源）"
+    if value == "raw":
+        return "不模拟（原样发送）"
+    if value in PROFILE_FAMILY_LABELS:
+        return f"{PROFILE_FAMILY_LABELS[value]}（最新）"
+    head = value.rstrip("0123456789_")
+    version = value[len(head):].replace("_", ".")
+    return f"{head} {version}" if version else value
 
 
 def matchEmulation(userAgent: str, host: Platform) -> Emulation | None:

@@ -83,6 +83,17 @@ class LanguageSerializer(ConfigSerializer):
         return Language(QLocale(value)) if value != "Auto" else Language.AUTO
 
 
+class ThemeSerializer(ConfigSerializer):
+    def serialize(self, theme: Theme) -> str:
+        return theme.value
+
+    def deserialize(self, value: str) -> Theme:
+        try:
+            return Theme(value)
+        except ValueError:
+            return Theme.AUTO
+
+
 class StringListValidator(ConfigValidator):
     def validate(self, value) -> bool:
         return isinstance(value, list) and all(isinstance(i, str) for i in value)
@@ -191,7 +202,7 @@ class Config(QConfig):
         )
     customThemeMode = OptionsConfigItem(
         "Personalization", "ThemeMode", Theme.AUTO,
-        OptionsValidator(Theme),
+        OptionsValidator(Theme), ThemeSerializer(),
     )
     dpiScale = RangeConfigItem("Personalization", "DpiScale", 0, RangeValidator(0, 5), restart=True)
     if sys.platform == "darwin":
@@ -226,12 +237,11 @@ class Config(QConfig):
 cfg = Config()
 
 
-def proxies() -> dict | None:
+def proxyUrl() -> str | None:
     if cfg.proxyServer.value == "Off":
         return None
     if cfg.proxyServer.value == "Auto":
-        return getproxies() or None
+        system = getproxies()
+        return next((v for v in system.values() if v), None) if system else None
     server = str(cfg.proxyServer.value).strip()
-    if not server:
-        return None
-    return {p: server for p in ("http", "https", "ftp")}
+    return server or None

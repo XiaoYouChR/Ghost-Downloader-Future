@@ -54,7 +54,6 @@ class LiveEditDialog(EditTaskDialog):
 
     def accept(self):
         from app.models.task import TaskOptions
-        from app.models.serialization import filterFields
         from app.services.coroutine_runner import coroutineRunner
         from app.services.feature_service import featureService
 
@@ -68,7 +67,7 @@ class LiveEditDialog(EditTaskDialog):
             return
 
         self._setInteractive(False)
-        taskOptions = TaskOptions(**filterFields(TaskOptions, {**options, "url": newUrl}))
+        taskOptions = TaskOptions.fromOptions({**options, "url": newUrl})
         self._pendingParseId = coroutineRunner.submit(
             featureService.parse(taskOptions),
             done=self._onReparsed,

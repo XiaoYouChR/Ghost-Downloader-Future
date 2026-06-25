@@ -42,13 +42,14 @@ def startApp(application):
 
     from app.config.cfg import cfg
     from app.platform.android_keepalive import keepAlive, REASON_DOWNLOAD, REASON_BROWSER, requestIgnoreBatteryOptimizations
-    from app.platform.android_notification import notifyTaskCompleted, requestNotificationPermission
+    from app.platform.android_notification import notifyBrowserPaired, notifyBrowserTaskAdded, notifyTaskCompleted, requestNotificationPermission
     from app.services.browser_service import browserService
     from app.services.coroutine_runner import coroutineRunner
     from app.services.feature_service import featureService
+    from app.services.speed_meter import speedMeter
     from app.services.task_service import taskService
     from app.signal_bus import signalBus
-    from app.view.mobile.touch_runtime import setupTouchScrolling
+    from app.view.mobile.device import setupTouchScrolling
     from app.view.mobile.window import MobileMainWindow
 
     def exceptionHook(exceptionType, value, tb):
@@ -58,7 +59,7 @@ def startApp(application):
 
     sys.excepthook = exceptionHook
 
-    import app.assets.resources
+    import app.assets.resources  # noqa: F401
 
     locale = cfg.language.value.value
     translator = QTranslator()
@@ -68,6 +69,7 @@ def startApp(application):
     coroutineRunner.start()
     featureService.load()
     taskService.resumeSaved()
+    featureService.start()
 
     mainWindow = MobileMainWindow()
     mainWindow.show()
@@ -79,7 +81,19 @@ def startApp(application):
     taskService.taskCompleted.connect(notifyTaskCompleted)
     taskService.taskStarted.connect(lambda _: keepAlive.holdFor(REASON_DOWNLOAD))
     taskService.tasksAllCompleted.connect(lambda: keepAlive.release(REASON_DOWNLOAD))
-    taskService.speedChanged.connect(keepAlive.setSpeed)
+    speedMeter.speedChanged.connect(keepAlive.setSpeed)
+
+    def onBrowserTaskDraftRequested(tasks):
+        for task in tasks:
+            taskService.add(task)
+        notifyBrowserTaskAdded(tasks)
+
+    def onBrowserPairRequested(request):
+        browserService.approvePair(request["session"], request["requestId"])
+        notifyBrowserPaired(request.get("peerAddress", ""))
+
+    browserService.taskDraftRequested.connect(onBrowserTaskDraftRequested)
+    browserService.pairRequested.connect(onBrowserPairRequested)
 
     cfg.isBrowserExtensionEnabled.valueChanged.connect(
         lambda enabled: keepAlive.holdFor(REASON_BROWSER) if enabled else keepAlive.release(REASON_BROWSER)
@@ -99,9 +113,9 @@ def startApp(application):
 
     def stopApp():
         taskService.stop()
+        taskService.flush()
         browserService.stop()
         featureService.stop()
-        taskService.flush()
         coroutineRunner.stop()
 
     application.aboutToQuit.connect(stopApp)
@@ -111,8 +125,8 @@ if __name__ == "__main__":
     from app.platform.application import SingletonApplication
 
     setupEnvironment()
-    from app.view.mobile import applyPatches
-    applyPatches()
+    from app.view.mobile import setupAndroid
+    setupAndroid()
     app = SingletonApplication(sys.argv, "gd3")
     startApp(app)
     sys.exit(app.exec())

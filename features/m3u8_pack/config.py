@@ -61,11 +61,11 @@ class M3U8Config(PackConfig):
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, RangeSettingCard, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import (
-            InstallFolderCard, LineEditSettingCard, RuntimeCard, SelectFileCard, SpinBoxSettingCard,
+            SelectFolderSettingCard, LineEditSettingCard, RuntimeCard, SelectFileCard, SpinBoxSettingCard,
         )
 
         self.m3u8Group = CollapsibleSettingCardGroup(self.tr("流媒体下载"), "m3u8", settingPage.container)
-        self.installFolderCard = InstallFolderCard(
+        self.installFolderCard = SelectFolderSettingCard(
             self.installFolder, f"{APP_DATA_DIR}/M3U8DL",
             self.tr("N_m3u8DL-RE 安装目录"), self.tr("选择 N_m3u8DL-RE 安装目录"),
             self.m3u8Group,
@@ -180,9 +180,9 @@ class M3U8Runtime(BinaryRuntime):
         try:
             response = await client.get(RELEASE_API)
             response.raise_for_status()
-            release = response.json()
+            release = await response.json()
         finally:
-            await client.aclose()
+            client.close()
 
         assets = release.get("assets")
         if not isinstance(assets, list):

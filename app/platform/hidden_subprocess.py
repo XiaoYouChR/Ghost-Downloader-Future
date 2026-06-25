@@ -52,9 +52,10 @@ class _HiddenProcess:
 
     def kill(self) -> None:
         self._proc.kill()
+        self._proc.wait()
 
     def _openReader(self, pipe) -> asyncio.StreamReader:
-        reader = asyncio.StreamReader(loop=self._loop)
+        reader = asyncio.StreamReader()
         threading.Thread(
             target=self._pumpPipe, args=(pipe, reader),
             name="subprocess-pipe-pump", daemon=True,

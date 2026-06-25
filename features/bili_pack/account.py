@@ -60,7 +60,7 @@ class BilibiliAccount(QObject):
     def startQrLogin(self):
         from app.services.coroutine_runner import coroutineRunner
         self._polling = True
-        coroutineRunner.run(self._pollQrLogin(), self._onQrLoginDone, self._onQrLoginFailed)
+        coroutineRunner.submit(self._pollQrLogin(), done=self._onQrLoginDone, failed=self._onQrLoginFailed)
 
     def cancelQrLogin(self):
         self._polling = False
@@ -71,11 +71,11 @@ class BilibiliAccount(QObject):
 
     def logout(self):
         from app.services.coroutine_runner import coroutineRunner
-        coroutineRunner.run(self._logout(), self._onLogoutDone, self._onLogoutFailed)
+        coroutineRunner.submit(self._logout(), done=self._onLogoutDone, failed=self._onLogoutFailed)
 
     def fetchAccountInfo(self):
         from app.services.coroutine_runner import coroutineRunner
-        coroutineRunner.run(self._fetchAccountInfo(), self._onAccountInfoDone, self._onAccountInfoFailed)
+        coroutineRunner.submit(self._fetchAccountInfo(), done=self._onAccountInfoDone, failed=self._onAccountInfoFailed)
 
     async def _pollQrLogin(self) -> str:
         from app.services.coroutine_runner import coroutineRunner
@@ -84,7 +84,7 @@ class BilibiliAccount(QObject):
         try:
             response = await client.get(QR_GENERATE_API)
             response.raise_for_status()
-            payload = response.json()
+            payload = await response.json()
             if payload.get("code") not in {None, 0}:
                 raise ValueError(payload.get("message") or "获取二维码失败")
 
@@ -103,7 +103,7 @@ class BilibiliAccount(QObject):
 
                 response = await client.get(QR_POLL_API, params={"qrcode_key": qrCodeKey})
                 response.raise_for_status()
-                payload = response.json()
+                payload = await response.json()
                 data = payload.get("data") or {}
                 statusCode = int(data.get("code", -1))
                 statusMessage = str(data.get("message") or "")
@@ -113,7 +113,7 @@ class BilibiliAccount(QObject):
                     continue
 
                 if statusCode == 0:
-                    items = {str(k): str(v) for k, v in response.cookies.items() if k and v}
+                    items = {c.name(): c.value() for c in response.cookies if c.name() and c.value()}
                     successUrl = str(data.get("url") or "")
                     if not any(n in items for n in COOKIE_ORDER):
                         for name, value in parse_qsl(urlparse(successUrl).query, keep_blank_values=False):
@@ -126,7 +126,7 @@ class BilibiliAccount(QObject):
 
             return ""
         finally:
-            await client.aclose()
+            client.close()
 
     async def _logout(self) -> bool:
         cookie = self.cookie
@@ -152,17 +152,17 @@ class BilibiliAccount(QObject):
                 "gourl": "https://www.bilibili.com/",
             })
             response.raise_for_status()
-            contentType = str(response.headers.get("content-type") or "").lower()
+            contentType = (response.headers.get("content-type") or b"").decode().lower()
             if "application/json" not in contentType:
                 return True
 
-            payload = response.json()
+            payload = await response.json()
             if payload.get("code") == 0 and payload.get("status") is True:
                 return True
 
             raise ValueError(payload.get("message") or "退出登录失败")
         finally:
-            await client.aclose()
+            client.close()
 
     async def _fetchAccountInfo(self) -> dict:
         cookie = self.cookie
@@ -173,7 +173,7 @@ class BilibiliAccount(QObject):
         try:
             response = await client.get(LOGIN_INFO_API)
             response.raise_for_status()
-            payload = response.json()
+            payload = await response.json()
             data = payload.get("data") or {}
 
             if payload.get("code") == -101 or not data.get("isLogin"):
@@ -181,7 +181,7 @@ class BilibiliAccount(QObject):
 
             return {"isLoggedIn": True, "uname": str(data.get("uname") or "").strip()}
         finally:
-            await client.aclose()
+            client.close()
 
     def _onQrLoginDone(self, cookie: str):
         self._polling = False

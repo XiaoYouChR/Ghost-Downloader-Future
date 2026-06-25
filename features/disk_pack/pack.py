@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.config.cfg import cfg, proxies
+from app.config.cfg import cfg
 from app.models.pack import FeaturePack
 from app.platform.filesystem import toPosixPath
 from .task import ExtractStep, InstallStep, InstallTask
@@ -31,7 +31,6 @@ def buildBinaryInstallTask(
         packId=packId,
         fileSize=fileSize,
         outputFolder=installFolder,
-        usesSlot=False,
         installFolder=str(installFolder),
     )
     task.addStep(HttpTaskStep(
@@ -39,7 +38,6 @@ def buildBinaryInstallTask(
         url=url,
         fileSize=fileSize,
         headers=dict(cfg.defaultRequestHeaders.value),
-        proxies=proxies() or {},
         subworkerCount=cfg.preBlockNum.value,
         canUseRangeRequests=True,
         outputFile=archivePath,

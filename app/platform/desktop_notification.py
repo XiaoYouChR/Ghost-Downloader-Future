@@ -17,9 +17,18 @@ notifier: DesktopNotifier | None = None
 
 
 async def init() -> None:
-    from desktop_notifier import DesktopNotifier as DN
+    from desktop_notifier import DesktopNotifier as DN, Icon
+
+    iconPath = Path(QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.TempLocation
+    )) / "gd3_logo.png"
+    if not iconPath.exists():
+        from PySide6.QtCore import QResource
+        with open(iconPath, "wb") as f:
+            f.write(QResource(":/image/logo.png").data())
+
     global notifier
-    notifier = DN(app_name="Ghost Downloader")
+    notifier = DN(app_name="Ghost Downloader", app_icon=Icon(path=iconPath))
 
 
 def notifyTaskCompleted(task: Task) -> None:

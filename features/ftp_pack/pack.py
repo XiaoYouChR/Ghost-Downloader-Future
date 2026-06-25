@@ -39,7 +39,7 @@ class FtpParser(TaskParser):
             hasPort=parsed.port is not None,
         )
 
-        client = await connectionInfo.connect(options.proxies)
+        client = await connectionInfo.connect()
         try:
             sourceInfo = await client.stat(sourcePath)
             sourceType = sourceInfo["type"]
@@ -109,7 +109,6 @@ class FtpParser(TaskParser):
                 connectionInfo=connectionInfo,
                 sourceType=sourceType,
                 files=files,
-                proxies=options.proxies,
             )
             return task
         finally:
@@ -121,6 +120,7 @@ class FtpParser(TaskParser):
 
 class FtpPack(FeaturePack):
     packId = "ftp"
+    proxySchemes = {"socks4", "socks5"}
 
     def parsers(self):
         return [FtpParser()]

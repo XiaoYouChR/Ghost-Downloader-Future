@@ -58,13 +58,13 @@ class TorrentParser(TaskParser):
                 options.clientProfile or cfg.clientProfile.value,
                 options.sourceUserAgent,
             )
-            client = buildClient(options.proxies, emulation=emulation, headers=dict(options.headers))
+            client = buildClient(emulation=emulation, headers=dict(options.headers))
             try:
                 response = await client.get(url)
                 response.raise_for_status()
                 torrentBytes = response.content
             finally:
-                await client.aclose()
+                client.close()
             sourceType, sourceUrl = "torrent", url
 
         ti = lt.torrent_info(torrentBytes)
@@ -105,6 +105,7 @@ class TorrentParser(TaskParser):
 class BitTorrentPack(FeaturePack):
     packId = "bt"
     config = bittorrentConfig
+    proxySchemes = {"socks5"}
 
     def parsers(self):
         return [TorrentParser()]
@@ -129,9 +130,11 @@ class BitTorrentPack(FeaturePack):
 
     def start(self):
         from app.services.coroutine_runner import coroutineRunner
+        from app.services.task_service import taskService
         if bittorrentConfig.enableWebTrackers.value and bittorrentConfig.autoRefreshWebTrackers.value:
-            coroutineRunner.run(trackerService.refresh())
+            coroutineRunner.submit(trackerService.refresh())
+        coroutineRunner.submit(btSession.resumeAllSeeding(taskService.tasks))
 
     def stop(self):
         from app.services.coroutine_runner import coroutineRunner
-        coroutineRunner.run(btSession.close())
+        coroutineRunner.submit(btSession.close())

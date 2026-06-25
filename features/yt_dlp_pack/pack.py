@@ -21,9 +21,9 @@ class YouTubeParser(TaskParser):
         return any(host == h or host.endswith(f".{h}") for h in YOUTUBE_HOSTS)
 
     async def parse(self, options: TaskOptions) -> Task:
+        from app.config.cfg import proxyUrl
 
         url = options.url.strip()
-        proxies = options.proxies or {}
         headers = dict(options.headers)
         videoFormat = DEFAULT_VIDEO_FORMAT
 
@@ -36,9 +36,9 @@ class YouTubeParser(TaskParser):
                 url, "-f", videoFormat, "--no-playlist", "--skip-download", "--no-warnings",
                 "--print", "%(title)s", "--print", "%(filesize_approx)s",
             ]
-            proxyUrl = next((v for v in proxies.values() if v), "")
-            if proxyUrl:
-                args.extend(["--proxy", proxyUrl])
+            proxy = proxyUrl()
+            if proxy:
+                args.extend(["--proxy", proxy])
             for name, value in headers.items():
                 text = str(value).strip()
                 if text:
@@ -73,7 +73,6 @@ class YouTubeParser(TaskParser):
             stepIndex=1,
             videoFormat=videoFormat,
             headers=headers,
-            proxies=proxies,
         ))
         return task
 

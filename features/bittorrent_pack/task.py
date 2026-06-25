@@ -11,6 +11,7 @@ from loguru import logger
 
 from app.models.task import Task, TaskStep, TaskFile, TaskStatus
 from app.platform.filesystem import deletePath, toPosixPath
+from app.services.speed_meter import speedMeter
 from .config import bittorrentConfig
 
 STATE_TEXT = {
@@ -47,6 +48,7 @@ class BTTask(Task):
     torrentData: str = ""
     resumeData: str = ""
     trackers: list[str] = field(default_factory=list)
+    shouldSeed: bool = True
     shareRatioPercent: float = 0
     seedingTimeSeconds: int = 0
     isSeeding: bool = False
@@ -65,7 +67,6 @@ class BTTask(Task):
         self._fileSelectionVersion = 0
         super().__post_init__()
         self.fileSize = sum(f.size for f in self.files if f.selected)
-        self._updateSlot()
 
     @property
     def step(self) -> TaskStep:
@@ -120,10 +121,10 @@ class BTTask(Task):
     def reset(self) -> TaskStatus:
         result = super().reset()
         self.resumeData = ""
+        self.shouldSeed = True
         self.shareRatioPercent = 0
         self.seedingTimeSeconds = 0
         self.isSeeding = False
-        self._updateSlot()
         self.stateText = ""
         self.peerCount = 0
         self.seedCount = 0
@@ -133,9 +134,6 @@ class BTTask(Task):
             f.downloadedBytes = 0
             f.completed = False
         return result
-
-    def _updateSlot(self):
-        self.usesSlot = not self.isSeeding
 
     def _addTorrent(self, session: lt.session) -> lt.torrent_handle:
         params = None
@@ -164,9 +162,12 @@ class BTTask(Task):
         if self.trackers:
             params.trackers = self.trackers.copy()
 
-        infoHash = params.ti.info_hashes().v1 if params.ti is not None else params.info_hashes.v1
-        if session.find_torrent(infoHash).is_valid():
-            raise RuntimeError("该种子已在下载中")
+        hashes = params.ti.info_hashes() if params.ti is not None else params.info_hashes
+        for existing in session.get_torrents():
+            eh = existing.info_hashes()
+            if (hashes.has_v1() and eh.has_v1() and hashes.v1 == eh.v1) or \
+               (hashes.has_v2() and eh.has_v2() and hashes.v2 == eh.v2):
+                raise RuntimeError("该种子已在下载中")
 
         handle = session.add_torrent(params)
 
@@ -204,35 +205,33 @@ class BTTask(Task):
             handle.force_dht_announce()
 
         self._handle = handle
-        self._done = asyncio.get_running_loop().create_future()
+        self._downloadDone = asyncio.get_running_loop().create_future()
         self._resumeWaiter: asyncio.Future | None = None
-        self._seedBase = self.seedingTimeSeconds
-        self._seedStart: int | None = None
         self._appliedSelectionVersion = -1
+        completed = False
 
         btSession.alertReceived.connect(self._onAlert)
         supervisor = asyncio.create_task(self._supervise())
 
         try:
-            await self._done
-            self.isSeeding = False
-            self._updateSlot()
-            self.stateText = "已自动暂停做种"
+            await self._downloadDone
+            completed = True
             self.step.setStatus(TaskStatus.COMPLETED)
             self.step.progress = 100
             self.step.speed = 0
+            self.downloadRate = 0
+            btSession.registerSeeding(self, handle)
         except asyncio.CancelledError:
-            self.stateText = "已暂停做种" if self.isSeeding else "已暂停下载"
+            self.stateText = "已暂停下载"
             self.isSeeding = False
-            self._updateSlot()
-            self.step.setStatus(TaskStatus.PAUSED)
             raise
         finally:
             btSession.alertReceived.disconnect(self._onAlert)
             supervisor.cancel()
             with suppress(asyncio.CancelledError):
                 await supervisor
-            await asyncio.shield(self._removeTorrent(session, handle))
+            if not completed:
+                await asyncio.shield(self._removeTorrent(session, handle))
 
     async def _removeTorrent(self, session, handle):
         await self._saveResume()
@@ -252,20 +251,10 @@ class BTTask(Task):
                 self.isSeeding = status.is_seeding
                 self.downloadRate = status.download_rate
                 self.uploadRate = status.upload_rate
-                self._updateSlot()
+                speedMeter.addSpeed(status.download_rate)
 
                 downloaded = status.all_time_download or status.total_wanted_done or status.total_done
                 self.shareRatioPercent = (status.all_time_upload / downloaded * 100) if downloaded > 0 else 0.0
-                sessionSeconds = int(status.seeding_duration.total_seconds())
-                if self.isSeeding:
-                    if self._seedStart is None:
-                        self._seedStart = sessionSeconds
-                    self.seedingTimeSeconds = self._seedBase + max(0, sessionSeconds - self._seedStart)
-                else:
-                    if self._seedStart is not None:
-                        self._seedBase += max(0, sessionSeconds - self._seedStart)
-                        self._seedStart = None
-                    self.seedingTimeSeconds = self._seedBase
 
                 self.step.speed = status.download_rate
                 self.step.receivedBytes = status.total_wanted_done
@@ -291,8 +280,8 @@ class BTTask(Task):
                     self._handle.prioritize_files(self.priorities())
                     self._appliedSelectionVersion = self._fileSelectionVersion
 
-                if self._isSeedingLimitReached() and not self._done.done():
-                    self._done.set_result(None)
+                if status.is_seeding and not self._downloadDone.done():
+                    self._downloadDone.set_result(None)
 
             except Exception as e:
                 logger.opt(exception=e).error("BitTorrent 监控异常")
@@ -328,8 +317,8 @@ class BTTask(Task):
             return
 
         if isinstance(alert, ERROR_ALERTS):
-            if not self._done.done():
-                self._done.set_exception(RuntimeError(alert.message()))
+            if not self._downloadDone.done():
+                self._downloadDone.set_exception(RuntimeError(alert.message()))
 
     async def _saveResume(self):
         try:
@@ -349,17 +338,3 @@ class BTTask(Task):
             self.resumeData = ""
         finally:
             self._resumeWaiter = None
-
-    def _isSeedingLimitReached(self) -> bool:
-        if not self.isSeeding:
-            return False
-
-        ratioLimit = bittorrentConfig.seedingRatioLimit.value
-        if ratioLimit > 0 and self.shareRatioPercent >= ratioLimit:
-            return True
-
-        timeLimitMinutes = bittorrentConfig.seedingTimeLimit.value
-        if timeLimitMinutes > 0 and self.seedingTimeSeconds >= timeLimitMinutes * 60:
-            return True
-
-        return False

@@ -48,7 +48,6 @@ class YtDlpTask(Task):
 class YtDlpTaskStep(TaskStep):
     videoFormat: str = DEFAULT_VIDEO_FORMAT
     headers: dict[str, str] = field(default_factory=dict)
-    proxies: dict[str, str] = field(default_factory=dict)
     lastMessage: str = ""
 
     @property
@@ -73,9 +72,10 @@ class YtDlpTaskStep(TaskStep):
         ffmpegPath = ffmpegRuntime.path()
         if ffmpegPath:
             args.extend(["--ffmpeg-location", ffmpegPath])
-        proxyUrl = next((v for v in self.proxies.values() if v), "")
-        if proxyUrl:
-            args.extend(["--proxy", proxyUrl])
+        from app.config.cfg import proxyUrl
+        proxy = proxyUrl()
+        if proxy:
+            args.extend(["--proxy", proxy])
         for name, value in self.headers.items():
             text = value.strip()
             if text:

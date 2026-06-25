@@ -14,6 +14,7 @@ from app.client import buildClient, toEmulation
 from app.config.cfg import cfg
 from app.models.task import Task, TaskStep, TaskStatus, SpecialFileSize
 from app.platform.sysio import ftruncate, pwrite
+from app.services.speed_meter import speedMeter
 
 
 @dataclass
@@ -33,13 +34,20 @@ class HttpTask(Task):
     packId: str = "http"
     canEdit = True
 
+    def canReuseProgress(self, newTask: Task) -> bool:
+        return (
+            isinstance(newTask, HttpTask)
+            and self.fileSize > 0
+            and self.fileSize == newTask.fileSize
+        )
+
 
 @dataclass(kw_only=True)
 class HttpTaskStep(TaskStep):
     url: str = ""
     fileSize: int = 0
     headers: dict[str, str] = field(default_factory=dict)
-    proxies: dict[str, str] = field(default_factory=dict)
+    clientProfile: str = ""
     subworkerCount: int = 8
     canUseRangeRequests: bool = False
     isAccelerated: bool = False
@@ -48,6 +56,12 @@ class HttpTaskStep(TaskStep):
 
     def __post_init__(self):
         self.canPause = self.canUseRangeRequests
+
+    def setOptions(self, options: dict) -> None:
+        if "clientProfile" in options:
+            self.clientProfile = options["clientProfile"]
+        if "subworkerCount" in options:
+            self.subworkerCount = options["subworkerCount"]
 
     @property
     def outputPath(self) -> str:
@@ -201,16 +215,18 @@ class HttpTaskStep(TaskStep):
                     response = await self._client.get(self.url, headers=headers)
                     try:
                         response.raise_for_status()
-                        if response.status_code != 206:
-                            raise Exception(f"服务器拒绝了范围请求，状态码：{response.status_code}")
+                        status = response.status.as_int()
+                        if status != 206:
+                            raise Exception(f"服务器拒绝了范围请求，状态码：{status}")
                         async for chunk in response.stream(65536):
                             if not chunk:
                                 continue
-                            await cfg.waitForSpeedLimit()
                             pwrite(fd, chunk, subworker.position)
                             subworker.receivedBytes += len(chunk)
+                            speedMeter.addSpeed(len(chunk))
+                            await speedMeter.waitForSpeedLimit()
                     finally:
-                        await response.aclose()
+                        response.close()
                     return
                 except Exception:
                     await asyncio.sleep(5)
@@ -223,16 +239,18 @@ class HttpTaskStep(TaskStep):
                     response = await self._client.get(self.url, headers=dict(self.headers))
                     try:
                         response.raise_for_status()
-                        if response.status_code != 200:
-                            raise Exception(f"服务器返回了异常状态码：{response.status_code}")
+                        status = response.status.as_int()
+                        if status != 200:
+                            raise Exception(f"服务器返回了异常状态码：{status}")
                         async for chunk in response.stream(65536):
                             if not chunk:
                                 continue
-                            await cfg.waitForSpeedLimit()
                             pwrite(fd, chunk, subworker.receivedBytes)
                             subworker.receivedBytes += len(chunk)
+                            speedMeter.addSpeed(len(chunk))
+                            await speedMeter.waitForSpeedLimit()
                     finally:
-                        await response.aclose()
+                        response.close()
                     ftruncate(fd, subworker.receivedBytes)
                     return
                 except Exception:
@@ -249,21 +267,23 @@ class HttpTaskStep(TaskStep):
                     response = await self._client.get(self.url, headers=headers)
                     try:
                         response.raise_for_status()
-                        if response.status_code != 206:
-                            raise Exception(f"服务器拒绝了范围请求，状态码：{response.status_code}")
+                        status = response.status.as_int()
+                        if status != 206:
+                            raise Exception(f"服务器拒绝了范围请求，状态码：{status}")
                         async for chunk in response.stream(65536):
                             if not chunk:
                                 continue
                             remaining = subworker.end - subworker.position + 1
                             if len(chunk) > remaining:
                                 chunk = chunk[:remaining]
-                            await cfg.waitForSpeedLimit()
                             pwrite(fd, chunk, subworker.position)
                             subworker.receivedBytes += len(chunk)
+                            speedMeter.addSpeed(len(chunk))
+                            await speedMeter.waitForSpeedLimit()
                             if subworker.position > subworker.end:
                                 break
                     finally:
-                        await response.aclose()
+                        response.close()
 
                     if subworker.position > subworker.end:
                         subworker.receivedBytes = subworker.end - subworker.start + 1
@@ -286,8 +306,8 @@ class HttpTaskStep(TaskStep):
         if str(finalOutput) != self.outputPath:
             finalOutput.touch(exist_ok=True)
 
-        emulation = toEmulation(cfg.clientProfile.value, "")
-        self._client = buildClient(self.proxies or None, emulation=emulation)
+        emulation = toEmulation(self.clientProfile or cfg.clientProfile.value, "")
+        self._client = buildClient(emulation=emulation)
 
         restored = False
         if self.canUseRangeRequests:
@@ -321,15 +341,12 @@ class HttpTaskStep(TaskStep):
 
             self.setStatus(TaskStatus.COMPLETED)
             shouldDeleteRecord = True
-        except CancelledError:
-            self.setStatus(TaskStatus.PAUSED)
-            raise
         finally:
             if not supervisor.done():
                 supervisor.cancel()
                 with suppress(CancelledError):
                     await supervisor
             os.close(self._fd)
-            await self._client.aclose()
+            self._client.close()
             if shouldDeleteRecord:
                 self._deleteRecord()

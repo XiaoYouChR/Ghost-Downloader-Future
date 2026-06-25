@@ -7,7 +7,7 @@ from PySide6.QtCore import QUrl, QTimer, Qt
 from PySide6.QtGui import QIcon, QDesktopServices
 from PySide6.QtWidgets import QApplication
 from qfluentwidgets import (
-    FluentWindow, FluentIcon, NavigationItemPosition, MessageBox, Theme,
+    MSFluentWindow, FluentIcon, NavigationItemPosition, MessageBox, Theme, InfoBar, InfoBarPosition,
 )
 
 from app.config.cfg import cfg
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from app.models.task import Task
 
 
-class MainWindow(FluentWindow):
+class MainWindow(MSFluentWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +65,7 @@ class MainWindow(FluentWindow):
     def _bind(self) -> None:
         cfg.customThemeMode.valueChanged.connect(self._setTheme)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
+        signalBus.updateAvailable.connect(self._onUpdateAvailable)
 
         if sys.platform == "win32":
             cfg.backgroundEffect.valueChanged.connect(self._setBackgroundEffect)
@@ -77,8 +78,14 @@ class MainWindow(FluentWindow):
 
     def addTasks(self, tasks: list[Task]) -> None:
         self._draftDialog.addParsedTasks(tasks)
-        if not self._draftDialog.isVisible():
+        if self._draftDialog.isVisible():
+            return
+        if sys.platform == "darwin":
+            from app.platform.desktop import raiseWindow
+            raiseWindow(self)
             self._draftDialog.showMask()
+        else:
+            self._draftDialog.showStandalone()
 
     def confirmPair(self, request) -> None:
         from app.services.browser_service import browserService
@@ -92,7 +99,7 @@ class MainWindow(FluentWindow):
         content = self.tr(
             "浏览器扩展正在请求连接到 Ghost Downloader。\n\n"
             "来源: {0}\n客户端: {1}\n扩展版本: {2}\n\n"
-            "仅在你刚刚点击扩展里的"自动配对"时允许。"
+            "仅在你刚刚点击扩展里的\"自动配对\"时允许。"
         ).format(peerAddress, clientKind, extensionVersion)
 
         dialog = MessageBox(self.tr("浏览器扩展配对请求"), content, self)
@@ -105,10 +112,29 @@ class MainWindow(FluentWindow):
         else:
             browserService.rejectPair(session, requestId)
 
+    def _onUpdateAvailable(self, release) -> None:
+        from qfluentwidgets import PrimaryPushButton
+        from app.view.dialogs.release_info import ReleaseInfoDialog
+
+        infoBar = InfoBar(
+            icon=FluentIcon.CLOUD,
+            title=self.tr("检测到新版本"),
+            content=self.tr("最新版本: {0}").format(release.version),
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            duration=-1,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            parent=self,
+        )
+        detailButton = PrimaryPushButton(FluentIcon.CHAT, self.tr("查看详情"))
+        detailButton.clicked.connect(lambda: ReleaseInfoDialog(release, self).exec())
+        infoBar.addWidget(detailButton)
+        infoBar.show()
+
     def alertException(self, message: str) -> None:
         dialog = MessageBox(
             self.tr("程序发生异常"),
-            self.tr("点击"确定"后将复制错误信息并打开反馈页面。\n\n{0}").format(message),
+            self.tr("点击\"确定\"后将复制错误信息并打开反馈页面。\n\n{0}").format(message),
             self,
         )
         if dialog.exec():

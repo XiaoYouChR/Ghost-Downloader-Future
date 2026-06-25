@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from loguru import logger
 
-from app.config.cfg import cfg, proxies
+from app.config.cfg import cfg
 from app.platform.filesystem import toSafeFilename
 
 
@@ -37,8 +37,12 @@ class TaskOptions:
     )
     clientProfile: str = ""
     sourceUserAgent: str = ""
-    proxies: dict[str, str] | None = field(default_factory=proxies)
     subworkerCount: int = field(default_factory=lambda: cfg.preBlockNum.value)
+
+    @classmethod
+    def fromOptions(cls, options: dict) -> TaskOptions:
+        from app.models.serialization import filterFields
+        return cls(**filterFields(cls, options))
 
 
 @dataclass(frozen=True)
@@ -125,6 +129,9 @@ class TaskStep:
         if sync and hasattr(self, "_task"):
             self._task.updateStatus()
 
+    def setOptions(self, options: dict) -> None:
+        pass
+
     async def run(self) -> None:
         raise NotImplementedError
 
@@ -164,8 +171,7 @@ class Task:
     outputFolder: Path = field(default_factory=lambda: Path(cfg.downloadFolder.value))
     fileSize: int = 0
     files: list[TaskFile] | None = None
-    category: str = ""
-    usesSlot: bool = True
+    category: str | None = None
     stepType: Type[TaskStep] | None = field(default=None, repr=False)
 
     @property
@@ -194,9 +200,6 @@ class Task:
         for step in self.steps:
             step._bindTask(self)
         self.updateStatus()
-        if not self.category:
-            from app.services.category_service import categoryService
-            self.category = categoryService.categoryOf(self)
 
     def setName(self, name: str):
         self.name = toSafeFilename(name, fallback=self.name or "download")
@@ -207,6 +210,8 @@ class Task:
             self.outputFolder = Path(path)
         if "category" in options:
             self.category = options["category"]
+        for step in self.steps:
+            step.setOptions(options)
 
     def currentSnapshot(self) -> tuple[float, int, int]:
         if not self.steps:
@@ -318,7 +323,6 @@ class Task:
         return False
 
     def replaceWith(self, newTask: Task) -> None:
-        self.deleteFiles()
         self.url = newTask.url
         self.name = newTask.name
         self.fileSize = newTask.fileSize

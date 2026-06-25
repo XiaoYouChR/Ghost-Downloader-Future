@@ -29,6 +29,28 @@ def openFolder(path: str | PathLike[str]) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
 
 
+def shutdown() -> None:
+    from subprocess import Popen
+    match sys.platform:
+        case "win32":
+            Popen(["shutdown", "/s", "/t", "0"])
+        case "darwin":
+            Popen(["osascript", "-e", 'tell app "System Events" to shut down'])
+        case _:
+            Popen(["shutdown", "-h", "now"])
+
+
+def restart() -> None:
+    from subprocess import Popen
+    match sys.platform:
+        case "win32":
+            Popen(["shutdown", "/r", "/t", "0"])
+        case "darwin":
+            Popen(["osascript", "-e", 'tell app "System Events" to restart'])
+        case _:
+            Popen(["shutdown", "-r", "now"])
+
+
 def raiseWindow(window) -> None:
     window.show()
     window.setWindowState(

@@ -21,10 +21,10 @@ class FFmpegConfig(PackConfig):
 
     def setupSettings(self, settingPage):
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
-        from app.view.components.setting_cards import InstallFolderCard
+        from app.view.components.setting_cards import SelectFolderSettingCard
 
         self.ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", settingPage.container)
-        self.installFolderCard = InstallFolderCard(
+        self.installFolderCard = SelectFolderSettingCard(
             ffmpegConfig.installFolder, f"{APP_DATA_DIR}/FFmpeg",
             self.tr("FFmpeg 安装目录"), self.tr("选择 FFmpeg 安装目录"),
             self.ffmpegGroup,
@@ -93,9 +93,9 @@ class FFmpegRuntime(BinaryRuntime):
         try:
             response = await client.get(RELEASE_API)
             response.raise_for_status()
-            release = response.json()
+            release = await response.json()
         finally:
-            await client.aclose()
+            client.close()
 
         assets = release.get("assets")
         if not isinstance(assets, list):

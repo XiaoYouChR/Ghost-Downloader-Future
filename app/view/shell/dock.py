@@ -6,7 +6,7 @@ from Foundation import NSData
 
 from app.config.cfg import cfg
 from app.format import toReadableSize
-from app.services.task_service import taskService
+from app.services.speed_meter import speedMeter
 
 
 def setupDockSpeed() -> None:
@@ -85,5 +85,5 @@ def setupDockSpeed() -> None:
         if not enabled:
             restore()
 
-    taskService.speedChanged.connect(onSpeedChanged)
+    speedMeter.speedChanged.connect(onSpeedChanged)
     cfg.shouldShowDockSpeed.valueChanged.connect(onShowSpeedChanged)

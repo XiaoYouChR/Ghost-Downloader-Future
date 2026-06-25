@@ -40,6 +40,27 @@ def notifyTaskCompleted(task: Task) -> None:
            "下载完成", task.name, ongoing=False, lowImportance=False)
 
 
+BROWSER_PUSH_NOTIFICATION_ID = 0x6764_0001
+BROWSER_PAIR_NOTIFICATION_ID = 0x6764_0002
+
+
+def notifyBrowserTaskAdded(tasks: list[Task]) -> None:
+    if not tasks:
+        return
+    count = len(tasks)
+    title = "浏览器推送" if count == 1 else f"浏览器推送 ({count})"
+    text = tasks[0].name if count == 1 else "、".join(t.name for t in tasks[:3])
+    if count > 3:
+        text += f" 等 {count} 项"
+    notify(DOWNLOAD_CHANNEL, "下载", BROWSER_PUSH_NOTIFICATION_ID,
+           title, text, ongoing=False, lowImportance=False)
+
+
+def notifyBrowserPaired(peerAddress: str) -> None:
+    notify(DOWNLOAD_CHANNEL, "下载", BROWSER_PAIR_NOTIFICATION_ID,
+           "浏览器扩展已连接", peerAddress, ongoing=False, lowImportance=True)
+
+
 def requestNotificationPermission() -> None:
     from jnius import autoclass
 
