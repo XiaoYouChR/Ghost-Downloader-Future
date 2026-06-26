@@ -224,7 +224,7 @@ class HttpTaskStep(TaskStep):
                         status = response.status.as_int()
                         if status != 206:
                             raise Exception(f"服务器拒绝了范围请求，状态码：{status}")
-                        async for chunk in response.stream(65536):
+                        async for chunk in response.stream():
                             if not chunk:
                                 continue
                             pwrite(fd, chunk, subworker.position)
@@ -248,7 +248,7 @@ class HttpTaskStep(TaskStep):
                         status = response.status.as_int()
                         if status != 200:
                             raise Exception(f"服务器返回了异常状态码：{status}")
-                        async for chunk in response.stream(65536):
+                        async for chunk in response.stream():
                             if not chunk:
                                 continue
                             pwrite(fd, chunk, subworker.receivedBytes)
@@ -276,7 +276,7 @@ class HttpTaskStep(TaskStep):
                         status = response.status.as_int()
                         if status != 206:
                             raise Exception(f"服务器拒绝了范围请求，状态码：{status}")
-                        async for chunk in response.stream(65536):
+                        async for chunk in response.stream():
                             if not chunk:
                                 continue
                             remaining = subworker.end - subworker.position + 1

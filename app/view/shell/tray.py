@@ -58,7 +58,7 @@ if sys.platform == "win32":
     class AcrylicMenu(RoundMenu):
 
         def __init__(self, title="", parent=None):
-            super().__init__(title, parent)
+            super().__init__(title=title, parent=parent)
             self._windowEffect = WindowEffect(self)
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.NoDropShadowWindowHint)
             self.setStyle(MenuStyle())
@@ -90,17 +90,17 @@ class SystemTrayIcon(QSystemTrayIcon):
         super().__init__(icon, parent)
         self.setToolTip("Ghost Downloader")
 
-        menu = TrayMenu(parent=self)
-        menu.addAction(Action(GhostIcon.GHOST, self.tr("仪表盘"), self,
-                              triggered=lambda: signalBus.activationRequested.emit()))
-        menu.addAction(Action(FluentIcon.PLAY, self.tr("全部开始"), self,
-                              triggered=taskService.startAll))
-        menu.addAction(Action(FluentIcon.PAUSE, self.tr("全部暂停"), self,
-                              triggered=taskService.pauseAll))
-        menu.addSeparator()
-        menu.addAction(Action(FluentIcon.CLOSE, self.tr("退出程序"), self,
-                              triggered=QApplication.instance().quit))
-        self.setContextMenu(menu)
+        self._menu = TrayMenu()
+        self._menu.addAction(Action(GhostIcon.GHOST, self.tr("仪表盘"),
+                                    triggered=lambda: signalBus.activationRequested.emit()))
+        self._menu.addAction(Action(FluentIcon.PLAY, self.tr("全部开始"),
+                                    triggered=taskService.startAll))
+        self._menu.addAction(Action(FluentIcon.PAUSE, self.tr("全部暂停"),
+                                    triggered=taskService.pauseAll))
+        self._menu.addSeparator()
+        self._menu.addAction(Action(FluentIcon.CLOSE, self.tr("退出程序"),
+                                    triggered=QApplication.instance().quit))
+        self.setContextMenu(self._menu)
 
         self.activated.connect(self._onActivated)
 

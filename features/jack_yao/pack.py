@@ -12,7 +12,6 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     FluentIcon,
-    HyperlinkButton,
     IconWidget,
     IndeterminateProgressRing,
     MessageBoxBase,
@@ -25,6 +24,8 @@ from qfluentwidgets import (
     SettingCardGroup,
     SimpleCardWidget,
     TitleLabel,
+    ToolTipFilter,
+    TransparentToolButton,
 )
 
 from app.client import buildClient
@@ -173,9 +174,10 @@ class CatalogCard(SimpleCardWidget):
 
         self._downloadButton = PrimaryPushButton(FluentIcon.DOWNLOAD, self.tr("下载"), self)
         self._downloadButton.setFixedWidth(100)
-        self._videoButton = HyperlinkButton("", self.tr("视频"), self, FluentIcon.VIDEO)
+        self._videoButton = TransparentToolButton(FluentIcon.VIDEO, self)
+        self._videoButton.installEventFilter(ToolTipFilter(self._videoButton))
+        self._videoButton.setToolTip(self.tr("观看视频"))
         self._videoButton.setEnabled(bool(self._videoUrl))
-        self._videoButton.setVisible(bool(self._videoUrl))
 
         self._initLayout()
         self._bind()
@@ -191,13 +193,11 @@ class CatalogCard(SimpleCardWidget):
         mainLayout.addWidget(self._logoLabel)
         mainLayout.addLayout(textLayout, 1)
         mainLayout.addWidget(self._downloadButton)
-        if self._videoUrl:
-            mainLayout.addWidget(self._videoButton)
+        mainLayout.addWidget(self._videoButton)
 
     def _bind(self):
         self._downloadButton.clicked.connect(self._onDownloadClicked)
-        if self._videoUrl:
-            self._videoButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._videoUrl)))
+        self._videoButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._videoUrl)))
 
     def _onDownloadClicked(self):
         dialog = CatalogDownloadDialog(self.window(), self._catalogItems)
@@ -240,7 +240,7 @@ class CatalogDownloadDialog(MessageBoxBase):
         self.viewLayout.addWidget(self._logGroup)
         self.viewLayout.addWidget(self._optionGroup)
 
-        self.widget.setMinimumWidth(510)
+        self.widget.setFixedWidth(700)
 
         self._versionCard.comboBox.currentIndexChanged.connect(
             lambda i: self._logEdit.setPlainText(self._items[i]["Log"] if i < len(self._items) else "")

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QRect, QUrl, QTimer, Qt
 from PySide6.QtGui import QColor, QIcon, QDesktopServices, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QHBoxLayout
 from qfluentwidgets import (
     MSFluentWindow, FluentIcon, NavigationItemPosition, MessageBox, Theme, InfoBar, InfoBarPosition,
     setThemeColor, qconfig,
@@ -212,8 +212,14 @@ class MainWindow(MSFluentWindow):
         logButton = TransparentToolButton(FluentIcon.DOCUMENT, dialog)
         logButton.setToolTip(self.tr("查看日志"))
         logButton.installEventFilter(ToolTipFilter(logButton))
-        logButton.clicked.connect(lambda: self._openLogFolder())
-        dialog.titleLabel.parentWidget().layout().addWidget(logButton)
+        logButton.clicked.connect(self._openLogFolder)
+
+        titleLayout = dialog.textLayout
+        titleLayout.removeWidget(dialog.titleLabel)
+        titleRow = QHBoxLayout()
+        titleRow.addWidget(dialog.titleLabel, 1)
+        titleRow.addWidget(logButton)
+        titleLayout.insertLayout(0, titleRow)
 
         if dialog.exec():
             QApplication.clipboard().setText(message)
