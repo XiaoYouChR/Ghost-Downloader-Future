@@ -52,9 +52,9 @@ class FtpDraftCard(UniversalDraftCard):
 
     def _refreshSummary(self):
         if not self.task.files or len(self.task.files) <= 1:
-            self.summaryLabel.setText(toReadableSize(self.task.fileSize))
+            self.sizeLabel.setText(toReadableSize(self.task.fileSize))
             return
-        self.summaryLabel.setText(
+        self.sizeLabel.setText(
             self.tr("{0}/{1} 个文件 · {2}").format(
                 self.task.countSelected,
                 len(self.task.files),
@@ -65,16 +65,6 @@ class FtpDraftCard(UniversalDraftCard):
     def _onSelectFilesClicked(self):
         if openFileSelection(self.task, self.window()) is not None:
             self._refreshSummary()
-
-    def _onNameEdited(self):
-        newName = self.nameEdit.text().strip()
-        if newName and newName != self.task.name:
-            self.task.setName(newName)
-        self.nameLabel.setText(self.task.name)
-        self.nameEdit.setText(self.task.name)
-        self.nameEdit.hide()
-        self.nameLabel.show()
-
 
 class FtpTaskCard(UniversalTaskCard):
     def __init__(self, task: FtpTask, parent=None):

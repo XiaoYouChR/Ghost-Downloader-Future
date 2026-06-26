@@ -106,6 +106,10 @@ class Category:
     extensions: list[str] = field(default_factory=list)
     folder: str | None = None
 
+    def toIcon(self):
+        from qfluentwidgets import FluentIcon
+        return getattr(FluentIcon, self.icon, FluentIcon.TAG)
+
     @classmethod
     def fromDict(cls, data: dict[str, Any]) -> Category:
         extensions: list[str] = []

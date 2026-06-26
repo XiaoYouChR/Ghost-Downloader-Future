@@ -136,7 +136,7 @@ class TaskService(QObject):
         self._flushTimer.setInterval(200)
         self._flushTimer.timeout.connect(self._store.flush)
 
-        cfg.maxTaskNum.valueChanged.connect(lambda _: self._rebalance())
+        cfg.maxTaskNum.valueChanged.connect(self._rebalance)
 
     @property
     def tasks(self) -> list[Task]:

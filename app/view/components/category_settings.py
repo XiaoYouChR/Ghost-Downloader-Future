@@ -13,4 +13,5 @@ class CategoryRowWidget(QWidget):
 
 class CategoryRulesCard(SettingCard):
     def __init__(self, parent=None):
-        super().__init__(parent=parent)
+        from qfluentwidgets import FluentIcon
+        super().__init__(FluentIcon.TAG, "分类规则", "管理下载文件的自动分类规则", parent=parent)

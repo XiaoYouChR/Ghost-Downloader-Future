@@ -95,6 +95,9 @@ class EmptyStatusWidget(QWidget):
         layout.addWidget(self.iconWidget, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.label, 0, Qt.AlignmentFlag.AlignHCenter)
 
+    def setText(self, text: str) -> None:
+        self.label.setText(text)
+
     def paintEvent(self, e):
         painter = QPainter(self)
         painter.setRenderHints(QPainter.RenderHint.Antialiasing)
@@ -104,7 +107,8 @@ class EmptyStatusWidget(QWidget):
 
 
 class TaskPage(QWidget):
-    ROW_SPACING = 2
+    ROW_SPACING = 8
+    SIDE_PADDING = 12
     VIEWPORT_BUFFER = 3
 
     def __init__(self, parent=None):
@@ -115,6 +119,7 @@ class TaskPage(QWidget):
         self._sortAscending = False
         self._searchText = ""
         self._selectionMode = False
+        self._selectionAnchor: str | None = None
         self._cards: dict[str, TaskCard] = {}
         self._displayOrder: list[str] = []
         self._mounted: set[str] = set()
@@ -246,9 +251,9 @@ class TaskPage(QWidget):
         taskService.taskRemoved.connect(self._onTaskRemoved)
         for signal in (taskService.taskStarted, taskService.taskPaused,
                        taskService.taskCompleted, taskService.taskFailed):
-            signal.connect(lambda _: self._refreshVisibleCards())
+            signal.connect(self._refreshVisibleCards)
         speedMeter.speedChanged.connect(self._onSpeedChanged)
-        self.scrollArea.verticalScrollBar().valueChanged.connect(lambda _: self._refreshViewport())
+        self.scrollArea.verticalScrollBar().valueChanged.connect(self._refreshViewport)
 
         self.startAllButton.clicked.connect(self.startAll)
         self.pauseAllButton.clicked.connect(self.pauseAll)
@@ -321,9 +326,32 @@ class TaskPage(QWidget):
 
     def setSelectionMode(self, enter: bool) -> None:
         self._selectionMode = enter
+        self._selectionAnchor = None
         for card in self._cards.values():
             card.setSelectionMode(enter)
         self.commandView.setVisible(enter)
+
+    def _onCardSelectionChanged(self, taskId: str, checked: bool, extend: bool) -> None:
+        if not self._selectionMode:
+            self.setSelectionMode(True)
+
+        if extend and self._selectionAnchor:
+            try:
+                anchorIdx = self._displayOrder.index(self._selectionAnchor)
+                currentIdx = self._displayOrder.index(taskId)
+            except ValueError:
+                return
+            for i in range(min(anchorIdx, currentIdx), max(anchorIdx, currentIdx) + 1):
+                card = self._cards.get(self._displayOrder[i])
+                if card:
+                    card.setChecked(True)
+            return
+
+        card = self._cards.get(taskId)
+        if card:
+            card.setChecked(checked)
+        if checked:
+            self._selectionAnchor = taskId
 
     @property
     def isSelectionMode(self) -> bool:
@@ -358,7 +386,6 @@ class TaskPage(QWidget):
 
     def _rebuildCategoryFilterMenu(self) -> None:
         from app.services.category_service import categoryService
-
         self.categoryFilterMenu.clear()
         for action in self.categoryFilterGroup.actions():
             self.categoryFilterGroup.removeAction(action)
@@ -374,7 +401,7 @@ class TaskPage(QWidget):
         for category in categoryService.categories():
             cid = category.categoryId
             validIds.add(cid)
-            action = Action(category.fluentIcon(), category.name, self, checkable=True)
+            action = Action(category.toIcon(), category.name, self, checkable=True)
             action.triggered.connect(lambda checked=False, c=cid: self.setCategoryFilter(c))
             self.categoryFilterGroup.addAction(action)
             self.categoryFilterMenu.addAction(action)
@@ -404,7 +431,6 @@ class TaskPage(QWidget):
 
     def _onMoveCategorySelected(self) -> None:
         from app.services.category_service import categoryService
-
         targets = [
             card.task for taskId in self._displayOrder
             if (card := self._cards.get(taskId)) and card.isChecked()
@@ -424,7 +450,7 @@ class TaskPage(QWidget):
         popup.addSeparator()
         for category in categoryService.categories():
             cid = category.categoryId
-            action = Action(category.fluentIcon(), category.name, self)
+            action = Action(category.toIcon(), category.name, self)
             action.triggered.connect(lambda checked=False, c=cid: moveTo(c))
             popup.addAction(action)
         popup.exec(QCursor.pos())
@@ -464,10 +490,30 @@ class TaskPage(QWidget):
             tasks.sort(key=lambda t: t.createdAt, reverse=not self._sortAscending)
 
         self._displayOrder = [t.taskId for t in tasks]
-        self.emptyStatusWidget.setVisible(not self._displayOrder)
         stride = TaskCard.ROW_HEIGHT + self.ROW_SPACING
         self.scrollWidget.setFixedHeight(max(0, len(self._displayOrder) * stride - self.ROW_SPACING))
         self._refreshViewport()
+
+        if self._displayOrder:
+            self.emptyStatusWidget.hide()
+        else:
+            if not self._cards:
+                text = self.tr("暂无下载任务")
+            elif self._searchText and (self._filterMode != FilterMode.ALL or self._categoryFilter):
+                text = self.tr("没有匹配筛选条件的任务")
+            elif self._searchText:
+                text = self.tr("没有匹配的任务")
+            elif self._categoryFilter:
+                text = self.tr("该分类下暂无任务")
+            elif self._filterMode == FilterMode.ACTIVE:
+                text = self.tr("暂无活动任务")
+            elif self._filterMode == FilterMode.COMPLETED:
+                text = self.tr("暂无完成任务")
+            else:
+                text = self.tr("暂无下载任务")
+            self.emptyStatusWidget.setText(text)
+            self.emptyStatusWidget.adjustSize()
+            self.emptyStatusWidget.show()
 
     def _refreshViewport(self) -> None:
         stride = TaskCard.ROW_HEIGHT + self.ROW_SPACING
@@ -487,7 +533,7 @@ class TaskPage(QWidget):
             card = self._cards.get(taskId)
             if card is None:
                 continue
-            card.setGeometry(0, idx * stride, width, TaskCard.ROW_HEIGHT)
+            card.setGeometry(self.SIDE_PADDING, idx * stride, max(0, width - 2 * self.SIDE_PADDING), TaskCard.ROW_HEIGHT)
             if taskId not in self._mounted:
                 card.refresh()
             card.show()
@@ -510,16 +556,15 @@ class TaskPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._refreshViewport()
+        self.commandView.move(
+            (self.width() - self.commandView.width()) // 2,
+            self.height() - self.commandView.height() - 20,
+        )
         viewport = self.scrollArea.viewport()
         self.emptyStatusWidget.move(
             (viewport.width() - self.emptyStatusWidget.width()) // 2,
             (viewport.height() - self.emptyStatusWidget.height()) // 2,
         )
-        if self.commandView.isVisible():
-            self.commandView.move(
-                (self.width() - self.commandView.width()) // 2,
-                self.height() - self.commandView.height() - 20,
-            )
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -530,6 +575,9 @@ class TaskPage(QWidget):
         card.hide()
         self._cards[task.taskId] = card
         card.setSelectionMode(self._selectionMode)
+        card.selectionChanged.connect(
+            lambda checked, extend, tid=task.taskId: self._onCardSelectionChanged(tid, checked, extend)
+        )
         self._rebuildTimer.start()
 
     def _onTaskRemoved(self, taskId: str) -> None:
@@ -538,4 +586,6 @@ class TaskPage(QWidget):
             card.hide()
             card.deleteLater()
         self._mounted.discard(taskId)
+        if self._selectionAnchor == taskId:
+            self._selectionAnchor = None
         self._rebuildTimer.start()

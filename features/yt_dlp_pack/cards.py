@@ -26,7 +26,7 @@ class YtDlpDraftCard(UniversalDraftCard):
 
     def _initLayout(self):
         super()._initLayout()
-        self.layout().insertWidget(self.layout().count() - 1, self.qualityCombo)
+        self.layout().addWidget(self.qualityCombo)
 
     def _bind(self):
         super()._bind()

@@ -131,7 +131,7 @@ class ProxySettingCard(ExpandGroupSettingCard):
             self._showProxyUrl(value)
 
         self.buttonGroup.buttonClicked.connect(self._onRadioClicked)
-        self.protocolCombo.currentTextChanged.connect(lambda _: self._refreshCompatBanner())
+        self.protocolCombo.currentTextChanged.connect(self._refreshCompatBanner)
         self._refreshCompatBanner()
 
     def _initLayout(self) -> None:
@@ -236,36 +236,45 @@ class SelectFolderSettingCard(SettingCard):
     pathChanged = Signal(str)
 
     def __init__(self, configItem: ConfigItem, defaultPath: str,
-                 title: str, browseTitle: str, parent=None):
-        super().__init__(FluentIcon.FOLDER, title, configItem.value, parent)
+                 title: str, parent=None):
+        super().__init__(FluentIcon.FOLDER, title, "", parent)
         self._configItem = configItem
         self._defaultPath = defaultPath
-        self._browseTitle = browseTitle
 
-        self.chooseFolderButton = ToolButton(FluentIcon.FOLDER, self)
+        from app.view.components.editors import FolderPicker
+
+        self.picker = FolderPicker(self)
         self.restoreButton = ToolButton(FluentIcon.CANCEL, self)
-        self.chooseFolderButton.setToolTip(self.tr("浏览文件夹"))
-        self.chooseFolderButton.installEventFilter(ToolTipFilter(self.chooseFolderButton))
         self.restoreButton.setToolTip(self.tr("恢复默认路径"))
         self.restoreButton.installEventFilter(ToolTipFilter(self.restoreButton))
 
-        self.hBoxLayout.addWidget(self.chooseFolderButton, 0, Qt.AlignmentFlag.AlignRight)
+        self.picker.refreshHistory()
+        self.picker.setPath(configItem.value)
+
+        self.hBoxLayout.addWidget(self.picker, 0, Qt.AlignmentFlag.AlignRight)
         self.hBoxLayout.addSpacing(8)
         self.hBoxLayout.addWidget(self.restoreButton, 0, Qt.AlignmentFlag.AlignRight)
         self.hBoxLayout.addSpacing(16)
 
-        self.chooseFolderButton.clicked.connect(self._onChooseFolder)
-        self.restoreButton.clicked.connect(lambda: self._setPath(self._defaultPath))
+        self.picker.pathChanged.connect(self._onPathChanged)
+        self.restoreButton.clicked.connect(self._onResetClicked)
 
-    def _onChooseFolder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self.window(), self._browseTitle)
-        if folder:
-            self._setPath(folder)
-
-    def _setPath(self, path: str) -> None:
+    def _onPathChanged(self, path: str) -> None:
         cfg.set(self._configItem, path)
-        self.setContent(self._configItem.value)
-        self.pathChanged.emit(self._configItem.value)
+        self._addToHistory(path)
+        self.picker.refreshHistory()
+        self.pathChanged.emit(path)
+
+    def _onResetClicked(self) -> None:
+        self.picker.setPath(self._defaultPath)
+        cfg.set(self._configItem, self._defaultPath)
+
+    def _addToHistory(self, folder: str) -> None:
+        history = list(cfg.memoryDownloadFolders.value)
+        if folder in history:
+            history.remove(folder)
+        history.insert(0, folder)
+        cfg.set(cfg.memoryDownloadFolders, history[:20])
 
 
 class ClientProfileSettingCard(SettingCard):

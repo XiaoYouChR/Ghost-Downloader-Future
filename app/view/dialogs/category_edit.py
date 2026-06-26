@@ -9,6 +9,7 @@ from qfluentwidgets import (
 )
 
 from app.services.category_service import Category
+from app.view.components.editors import TokenLineEdit
 
 
 class CategoryEditDialog(MessageBoxBase):
@@ -28,7 +29,7 @@ class CategoryEditDialog(MessageBoxBase):
         )
         self.nameEdit = LineEdit(self)
         self.iconCombo = ComboBox(self)
-        self.extensionsEdit = LineEdit(self)
+        self.extensionsEdit = TokenLineEdit(self)
         self.folderRow = QWidget(self)
         self.folderRowLayout = QHBoxLayout(self.folderRow)
         self.folderEdit = LineEdit(self.folderRow)
@@ -44,7 +45,7 @@ class CategoryEditDialog(MessageBoxBase):
         self.yesButton.setText(self.tr("确定"))
         self.cancelButton.setText(self.tr("取消"))
         self.nameEdit.setPlaceholderText(self.tr("分类名称"))
-        self.extensionsEdit.setPlaceholderText(self.tr("扩展名，用空格分隔 (如: mp4 mkv avi)"))
+        self.extensionsEdit.setPlaceholderText(self.tr("输入扩展名后按回车添加"))
         self.folderEdit.setPlaceholderText(self.tr("留空则使用默认下载路径；可用 {default} 代表默认下载文件夹"))
         self.folderBrowseButton.setToolTip(self.tr("选择文件夹"))
         self.folderBrowseButton.installEventFilter(ToolTipFilter(self.folderBrowseButton))
@@ -77,7 +78,7 @@ class CategoryEditDialog(MessageBoxBase):
         if self._category is None:
             return
         self.nameEdit.setText(self._category.name)
-        self.extensionsEdit.setText(" ".join(self._category.extensions))
+        self.extensionsEdit.setTokens(self._category.extensions)
         self.folderEdit.setText(self._category.folder or "")
         index = self.iconCombo.findData(self._category.icon)
         self.iconCombo.setCurrentIndex(index if index >= 0 else 0)
@@ -91,7 +92,7 @@ class CategoryEditDialog(MessageBoxBase):
     def category(self) -> Category:
         name = self.nameEdit.text().strip() or self.tr("未命名分类")
         extensions = [
-            ext for token in self.extensionsEdit.text().split()
+            ext for token in self.extensionsEdit.tokens()
             if (ext := token.strip().lstrip(".").lower())
         ]
         folder = self.folderEdit.text().strip() or None

@@ -7,7 +7,7 @@ from PySide6.QtGui import QDesktopServices, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QHBoxLayout, QSizePolicy
 from qfluentwidgets import (
     CaptionLabel, FluentIcon, MessageBoxBase,
-    PrimaryToolButton, SubtitleLabel, ToolButton,
+    PrimaryToolButton, SubtitleLabel, ToolButton, ToolTipFilter,
 )
 
 from app.config.constants import AUTHOR_URL
@@ -42,7 +42,9 @@ class ReleaseInfoDialog(MessageBoxBase):
         self.versionLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.prereleaseLabel.setVisible(self._release.prerelease)
         self.detailButton.setToolTip(self.tr("打开发布页"))
+        self.detailButton.installEventFilter(ToolTipFilter(self.detailButton))
         self.sponsorButton.setToolTip(self.tr("赞助作者"))
+        self.sponsorButton.installEventFilter(ToolTipFilter(self.sponsorButton))
 
         self.descriptionEdit.setMarkdown(self._release.body or self.tr("暂无更新说明"))
 

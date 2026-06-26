@@ -37,13 +37,19 @@ class DraftCard(QWidget):
 
         self._initWidget()
         self._initLayout()
+        self.layout().addWidget(self.editButton)
+        self.layout().addWidget(self.categoryButton)
         self._bind()
 
     def _initWidget(self) -> None:
         self.setFixedHeight(35)
+        self.nameLabel.setMinimumWidth(0)
+        self.nameLabel.setToolTip(self._task.name)
+        self.nameLabel.installEventFilter(ToolTipFilter(self.nameLabel))
         self.nameEdit.setText(self._task.name)
         self.nameEdit.hide()
         self.categoryButton.setFixedSize(28, 28)
+        self.categoryButton.installEventFilter(ToolTipFilter(self.categoryButton))
         self.editButton.setFixedSize(28, 28)
         self.editButton.setToolTip(self.tr("编辑任务参数"))
         self.editButton.installEventFilter(ToolTipFilter(self.editButton))
@@ -58,14 +64,13 @@ class DraftCard(QWidget):
         layout.addWidget(self.nameLabel, 1)
         layout.addWidget(self.nameEdit, 1)
         layout.addWidget(self.sizeLabel)
-        layout.addWidget(self.categoryButton)
-        layout.addWidget(self.editButton)
 
     def _bind(self) -> None:
         self.nameLabel.editRequested.connect(self._onNameEditRequested)
         self.nameEdit.editingFinished.connect(self._onNameEditFinished)
         self.editButton.clicked.connect(self.editRequested.emit)
         self.categoryButton.clicked.connect(self._showCategoryMenu)
+        cfg.isCategoryEnabled.valueChanged.connect(self._refreshCategoryButton)
 
     def _refreshFileIcon(self) -> None:
         self.iconLabel.setImage(QFileIconProvider().icon(QFileInfo(self._task.name)).pixmap(16, 16))
@@ -81,24 +86,28 @@ class DraftCard(QWidget):
         if newName and newName != self._task.name:
             self._task.setName(newName)
             self.nameLabel.setText(self._task.name)
+            self.nameLabel.setToolTip(self._task.name)
             self.nameEdit.setText(self._task.name)
             self._refreshFileIcon()
         self.nameEdit.hide()
         self.nameLabel.show()
 
-    def _refreshCategoryButton(self, categoryId: str | None = None) -> None:
+    def _refreshCategoryButton(self) -> None:
         if not cfg.isCategoryEnabled.value:
             self.categoryButton.hide()
             return
         from app.services.category_service import categoryService
-        category = categoryService.categoryById(categoryId if categoryId is not None else self._task.category)
-        icon = getattr(FluentIcon, category.icon, FluentIcon.TAG) if category else FluentIcon.TAG
-        self.categoryButton.setIcon(icon)
+        category = categoryService.categoryById(self._task.category)
+        if category:
+            self.categoryButton.setIcon(category.toIcon())
+            self.categoryButton.setToolTip(category.name)
+        else:
+            self.categoryButton.setIcon(FluentIcon.TAG)
+            self.categoryButton.setToolTip(self.tr("未分类"))
         self.categoryButton.show()
 
     def _showCategoryMenu(self) -> None:
         from app.services.category_service import categoryService
-
         menu = RoundMenu(parent=self)
         uncategorized = Action(FluentIcon.TAG, self.tr("未分类"), self)
         uncategorized.triggered.connect(lambda: self._onCategoryPicked(""))
@@ -106,14 +115,15 @@ class DraftCard(QWidget):
         menu.addSeparator()
         for category in categoryService.categories():
             cid = category.categoryId
-            icon = getattr(FluentIcon, category.icon, FluentIcon.TAG)
+            icon = category.toIcon()
             action = Action(icon, category.name, self)
             action.triggered.connect(lambda _=False, c=cid: self._onCategoryPicked(c))
             menu.addAction(action)
         menu.exec(self.categoryButton.mapToGlobal(self.categoryButton.rect().bottomLeft()))
 
     def _onCategoryPicked(self, categoryId: str) -> None:
-        self._refreshCategoryButton(categoryId)
+        self._task.category = categoryId
+        self._refreshCategoryButton()
         self.categoryPicked.emit(categoryId)
 
     @property

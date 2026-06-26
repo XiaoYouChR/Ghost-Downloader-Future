@@ -41,7 +41,7 @@ class FeatureService(QObject):
         if pack.config:
             toggle = pack.config.fileAssociationToggle()
             if toggle:
-                toggle.connect(lambda _: self._applyFileAssociations())
+                toggle.connect(self._registerFileAssociations)
 
     async def parse(self, options: TaskOptions) -> Task:
         for parser in self._parsers:
@@ -67,7 +67,7 @@ class FeatureService(QObject):
             types.extend(pack.fileTypes())
         return types
 
-    def _applyFileAssociations(self) -> None:
+    def _registerFileAssociations(self) -> None:
         types = []
         for pack in self._packs:
             if pack.config and not pack.config.isFileAssociationEnabled():

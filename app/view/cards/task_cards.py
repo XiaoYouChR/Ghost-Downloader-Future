@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QApplication
 from qfluentwidgets import (
     Action, CardWidget, CheckBox, FluentIcon, ImageLabel,
     IndeterminateProgressBar, PrimaryToolButton, ProgressBar,
-    RoundMenu, ToolButton, TransparentToolButton,
+    RoundMenu, ToolButton, ToolTipFilter, TransparentToolButton,
     isDarkTheme, themeColor,
 )
 
@@ -77,7 +77,6 @@ class TaskCard(CardWidget):
 
         if cfg.isCategoryEnabled.value:
             from app.services.category_service import categoryService
-
             moveMenu = RoundMenu(self.tr("移动到分类"), self)
             moveMenu.setIcon(FluentIcon.TAG)
             uncategorized = Action(FluentIcon.MORE, self.tr("未分类"), self)
@@ -86,7 +85,7 @@ class TaskCard(CardWidget):
             moveMenu.addSeparator()
             for category in categoryService.categories():
                 cid = category.categoryId
-                action = Action(category.fluentIcon(), category.name, self)
+                action = Action(category.toIcon(), category.name, self)
                 action.triggered.connect(lambda checked=False, c=cid: taskService.setCategory(self._task, c))
                 moveMenu.addAction(action)
             menu.addMenu(moveMenu)
@@ -162,6 +161,13 @@ class UniversalTaskCard(TaskCard):
 
     def _initWidget(self) -> None:
         self.iconLabel.setFixedSize(48, 48)
+        for btn, tip in (
+            (self.verifyHashButton, self.tr("校验文件哈希")),
+            (self.openFileButton, self.tr("打开文件")),
+            (self.openFolderButton, self.tr("打开文件夹")),
+        ):
+            btn.setToolTip(tip)
+            btn.installEventFilter(ToolTipFilter(btn))
 
     def _initLayout(self) -> None:
         infoLayout = QHBoxLayout()
@@ -195,7 +201,7 @@ class UniversalTaskCard(TaskCard):
         self.deleteButton.clicked.connect(self._onDeleteClicked)
 
         from app.services.category_service import categoryService
-        cfg.isCategoryEnabled.valueChanged.connect(lambda _: self._refreshCategoryIcon())
+        cfg.isCategoryEnabled.valueChanged.connect(self._refreshCategoryIcon)
         categoryService.categoriesChanged.connect(self._refreshCategoryIcon)
 
     def refresh(self) -> None:
@@ -274,7 +280,7 @@ class UniversalTaskCard(TaskCard):
         if category is None:
             self.nameLabel.setIcon(None)
             return
-        self.nameLabel.setIcon(category.fluentIcon())
+        self.nameLabel.setIcon(category.toIcon())
 
     def _refreshButtons(self) -> None:
         if self._task.status == TaskStatus.RUNNING:

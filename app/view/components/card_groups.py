@@ -50,6 +50,7 @@ class DraftCardGroup(TitledCardGroup):
         super().__init__(parent)
         self.setTitle(self.tr("解析结果"))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     def clear(self) -> None:
         while self.scrollLayout.count():

@@ -20,7 +20,8 @@ from app.config.constants import (
 from app.view.components.category_settings import CategoryRulesCard
 from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 from app.view.components.setting_cards import (
-    ClientProfileSettingCard, ProxySettingCard, SelectFolderSettingCard, SpinBoxSettingCard,
+    ClientProfileSettingCard, DefaultHeadersSettingCard, ProxySettingCard,
+    SelectFolderSettingCard, SpinBoxSettingCard,
 )
 
 
@@ -61,8 +62,7 @@ class SettingPage(ScrollArea):
             suffix=" KB/s", singleStep=512, division=1 / 1024,
         )
         self.downloadFolderCard = SelectFolderSettingCard(
-            cfg.downloadFolder, cfg.downloadFolder.value,
-            self.tr("下载路径"), self.tr("选择文件夹"),
+            cfg.downloadFolder, cfg.downloadFolder.value, self.tr("下载路径"),
         )
         self.clientProfileCard = ClientProfileSettingCard()
 
@@ -83,6 +83,8 @@ class SettingPage(ScrollArea):
             self.downloadFolderCard,
             ProxySettingCard(cfg.proxyServer),
             self.clientProfileCard,
+            DefaultHeadersSettingCard(FluentIcon.DICTIONARY, self.tr("默认请求头"),
+                                      self.tr("设置下载时使用的默认 HTTP 请求头")),
         ])
 
         self.categoryRulesCard = CategoryRulesCard()
@@ -240,7 +242,7 @@ class SettingPage(ScrollArea):
 
     def _bind(self) -> None:
         cfg.appRestartSig.connect(self._showRestartTooltip)
-        cfg.browserExtensionPairToken.valueChanged.connect(lambda _: self._refreshPairTokenCard())
+        cfg.browserExtensionPairToken.valueChanged.connect(self._refreshPairTokenCard)
         if sys.platform == "darwin":
             cfg.shouldShowDockIcon.valueChanged.connect(self.showDockSpeedCard.setEnabled)
 

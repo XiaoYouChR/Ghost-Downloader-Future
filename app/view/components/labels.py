@@ -74,12 +74,33 @@ class EditableLabel(StrongBodyLabel):
 
     def __init__(self, text: str = "", parent=None) -> None:
         super().__init__(parent)
-        self.setText(text)
+        self._text = text
+        super().setText(text)
         self._underlineProgress = 0.0
         self._underlineAnim = QPropertyAnimation(self, b"underlineProgress", self)
         self._underlineAnim.setDuration(150)
         self._underlineAnim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def text(self) -> str:
+        return self._text
+
+    def setText(self, text: str) -> None:
+        self._text = text
+        self._elide()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self) -> None:
+        width = self.contentsRect().width()
+        if width > 0:
+            elided = self.fontMetrics().elidedText(
+                self._text, Qt.TextElideMode.ElideRight, width)
+        else:
+            elided = self._text
+        super().setText(elided)
 
     @Property(float)
     def underlineProgress(self) -> float:
@@ -121,10 +142,10 @@ class EditableLabel(StrongBodyLabel):
             return
         rect = self.contentsRect()
         fm = self.fontMetrics()
-        width = min(fm.horizontalAdvance(self.text()), rect.width())
+        textWidth = min(fm.horizontalAdvance(super().text()), rect.width())
         y = rect.top() + (rect.height() - fm.height()) // 2 + fm.ascent() + 2
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor(255, 255, 255) if isDarkTheme() else QColor(0, 0, 0), 1))
-        painter.drawLine(rect.left(), y, rect.left() + int(width * self._underlineProgress), y)
+        painter.drawLine(rect.left(), y, rect.left() + int(textWidth * self._underlineProgress), y)

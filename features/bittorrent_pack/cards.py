@@ -41,7 +41,7 @@ class BTDraftCard(UniversalDraftCard):
     def _initWidget(self):
         super()._initWidget()
         icon = QFileIconProvider.IconType.File if self.task.isSingleFile else QFileIconProvider.IconType.Folder
-        self.iconLabel.setPixmap(QFileIconProvider().icon(icon).pixmap(20, 20))
+        self.iconLabel.setImage(QFileIconProvider().icon(icon).pixmap(16, 16))
         self._selectFilesButton = None
         if len(self.task.files) > 1:
             self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
@@ -57,7 +57,7 @@ class BTDraftCard(UniversalDraftCard):
             self._selectFilesButton.clicked.connect(self._onSelectFilesClicked)
 
     def _refreshSummary(self):
-        self.summaryLabel.setText(
+        self.sizeLabel.setText(
             self.tr("{0}/{1} 个文件 · {2}").format(
                 self.task.countSelected,
                 len(self.task.files),
