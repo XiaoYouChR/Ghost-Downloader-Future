@@ -48,6 +48,7 @@ class TaskDraftDialog(MessageBoxBase):
         self._bind()
 
     def _initWidget(self) -> None:
+        self.hide()
         self.widget.setFixedWidth(700)
         self.urlEdit.setPlaceholderText(self.tr("添加多个下载链接时，请确保每行只有一个下载链接"))
         self.urlEdit.setWordWrapMode(QTextOption.WrapMode.NoWrap)

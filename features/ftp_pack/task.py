@@ -38,7 +38,7 @@ class FtpConnectionInfo:
     hasPort: bool = False
 
     async def connect(self) -> aioftp.Client:
-        from app.config.cfg import proxyUrl
+        from app.config.cfg import proxy
 
         scheme = self.scheme.lower()
         if scheme != "ftps":
@@ -56,10 +56,10 @@ class FtpConnectionInfo:
             "path_timeout": FTP_PATH_TIMEOUT,
         }
 
-        url = proxyUrl()
+        url = proxy()
         if url:
             parsed = urlparse(url)
-            if parsed.scheme in {"socks4", "socks5"} and parsed.hostname and parsed.port:
+            if parsed.scheme in {"socks4", "socks5", "socks5h"} and parsed.hostname and parsed.port:
                 kwargs.update({
                     "socks_host": parsed.hostname,
                     "socks_port": parsed.port,
@@ -142,6 +142,11 @@ class FtpStep(TaskStep):
     @classmethod
     def fromFile(cls, file: TaskFile, task: Task) -> FtpStep:
         ftpFile: FtpFile = file
+        ftpTask: FtpTask = task
+        if ftpTask.isFolder:
+            outputFile = toPosixPath(task.outputFolder / task.name / ftpFile.relativePath)
+        else:
+            outputFile = toPosixPath(task.outputFolder / task.name)
         return cls(
             stepIndex=file.index + 1,
             fileIndex=file.index,
@@ -149,6 +154,7 @@ class FtpStep(TaskStep):
             fileSize=file.size,
             canUseRangeRequests=True,
             subworkerCount=cfg.preBlockNum.value,
+            outputFile=outputFile,
         )
 
     def _loadRecord(self) -> list[FtpSubworker]:
@@ -477,9 +483,15 @@ class FtpStep(TaskStep):
 @dataclass(kw_only=True, eq=False)
 class FtpTask(Task):
     packId: str = "ftp"
+    fileType = FtpFile
     connectionInfo: FtpConnectionInfo
     sourceType: str = "file"
     stepType: type = field(default=FtpStep, repr=False)
+
+    def __post_init__(self):
+        if isinstance(self.connectionInfo, dict):
+            self.connectionInfo = FtpConnectionInfo(**self.connectionInfo)
+        super().__post_init__()
 
     @property
     def isFolder(self) -> bool:

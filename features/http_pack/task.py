@@ -57,6 +57,12 @@ class HttpTaskStep(TaskStep):
     def __post_init__(self):
         self.canPause = self.canUseRangeRequests
 
+    def deleteFiles(self):
+        from app.platform.filesystem import deletePath
+        path = Path(self.outputPath)
+        deletePath(path)
+        deletePath(Path(f"{path}.ghd"))
+
     def setOptions(self, options: dict) -> None:
         if "clientProfile" in options:
             self.clientProfile = options["clientProfile"]

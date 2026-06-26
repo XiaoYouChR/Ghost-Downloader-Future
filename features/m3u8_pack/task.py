@@ -7,6 +7,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.config.cfg import cfg
 from app.format import toBytes
 from app.models.task import Task, TaskStep, TaskStatus
 from app.platform.filesystem import deletePath, toPosixPath
@@ -90,8 +91,20 @@ class M3U8TaskStep(TaskStep):
     def _saveName(self) -> str:
         return Path(self.task.name).stem
 
+    def terminate(self) -> None:
+        self._stopping = True
+        if self._process is not None and self._process.returncode is None:
+            self._process.terminate()
+
     def deleteFiles(self):
         deletePath(Path(self._tempFolder))
+        outputDir = self.task.outputFolder
+        if not outputDir.is_dir():
+            return
+        prefix = f"{self._saveName}."
+        for candidate in outputDir.iterdir():
+            if candidate.is_file() and candidate.name.startswith(prefix) and candidate.name != self.task.name:
+                candidate.unlink(missing_ok=True)
 
     def _buildCommand(self) -> list[str]:
         def toBool(v: bool) -> str:
@@ -129,18 +142,20 @@ class M3U8TaskStep(TaskStep):
 
         if self.maxSpeed > 0:
             args.append(f"--max-speed={self.maxSpeed}{self.speedUnit}")
+        elif cfg.isSpeedLimitEnabled.value:
+            args.append(f"--max-speed={cfg.speedLimitation.value}Bps")
         if self.adKeyword:
             args.append(f"--ad-keyword={self.adKeyword}")
         if self.shouldOmitDateInfo:
             args.append("--no-date-info=true")
 
-        from app.config.cfg import proxyUrl
-        proxy = proxyUrl()
-        if proxy and proxy.startswith("socks5h://"):
-            proxy = "socks5://" + proxy[len("socks5h://"):]
+        from app.config.cfg import proxy
+        proxyUrl = proxy()
+        if proxyUrl and proxyUrl.startswith("socks5h://"):
+            proxyUrl = "socks5://" + proxyUrl[len("socks5h://"):]
         args.append("--use-system-proxy=false")
-        if proxy:
-            args.append(f"--custom-proxy={proxy}")
+        if proxyUrl:
+            args.append(f"--custom-proxy={proxyUrl}")
 
         from ffmpeg_pack.config import ffmpegRuntime
         ffmpegPath = ffmpegRuntime.path()
@@ -264,6 +279,8 @@ class M3U8TaskStep(TaskStep):
             self.task.setName(found.name)
 
     async def run(self) -> None:
+        self._stopping = False
+        self._process = None
 
         execPath = m3u8Runtime.path()
         if not execPath:
@@ -277,11 +294,10 @@ class M3U8TaskStep(TaskStep):
         if self.shouldKeepImageSegments:
             env = {**os.environ, "RE_KEEP_IMAGE_SEGMENTS": "1"}
 
-        process = None
         outputTask = None
         try:
             command = self._buildCommand()
-            process = await asyncio.create_subprocess_exec(
+            self._process = await asyncio.create_subprocess_exec(
                 execPath, *command,
                 cwd=Path(execPath).parent,
                 env=env,
@@ -289,24 +305,24 @@ class M3U8TaskStep(TaskStep):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
-            outputTask = asyncio.create_task(self._readOutput(process.stdout))
+            outputTask = asyncio.create_task(self._readOutput(self._process.stdout))
 
-            await process.wait()
+            await self._process.wait()
             await outputTask
 
-            if process.returncode != 0:
-                raise RuntimeError(self.lastMessage or f"N_m3u8DL-RE 退出码异常: {process.returncode}")
+            if self._process.returncode != 0 and not self._stopping:
+                raise RuntimeError(self.lastMessage or f"N_m3u8DL-RE 退出码异常: {self._process.returncode}")
 
             self._findOutputFile()
             self.setStatus(TaskStatus.COMPLETED)
         except asyncio.CancelledError:
-            if process is not None and process.returncode is None:
-                process.terminate()
+            if self._process is not None and self._process.returncode is None:
+                self._process.terminate()
                 try:
-                    await asyncio.wait_for(process.wait(), timeout=3)
+                    await asyncio.wait_for(self._process.wait(), timeout=3)
                 except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
+                    self._process.kill()
+                    await self._process.wait()
             if outputTask is not None and not outputTask.done():
                 outputTask.cancel()
                 with suppress(asyncio.CancelledError):

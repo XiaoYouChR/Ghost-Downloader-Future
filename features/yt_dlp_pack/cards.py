@@ -1,20 +1,18 @@
-from PySide6.QtCore import Signal
 from qfluentwidgets import ComboBox
 
 from app.view.cards.draft_cards import UniversalDraftCard
 
 QUALITY_TIERS = (
-    ("best", "Best"),
-    ("2160", "4K"),
-    ("1440", "1440p"),
-    ("1080", "1080p"),
-    ("720", "720p"),
-    ("480", "480p"),
+    ("bv*+ba/b", "Best"),
+    ("bv*[height<=2160]+ba/b", "4K"),
+    ("bv*[height<=1440]+ba/b", "1440p"),
+    ("bv*[height<=1080]+ba/b", "1080p"),
+    ("bv*[height<=720]+ba/b", "720p"),
+    ("bv*[height<=480]+ba/b", "480p"),
 )
 
 
 class YtDlpDraftCard(UniversalDraftCard):
-    optionsChanged = Signal()
 
     def _initWidget(self):
         super()._initWidget()
@@ -32,5 +30,7 @@ class YtDlpDraftCard(UniversalDraftCard):
         super()._bind()
         self.qualityCombo.currentIndexChanged.connect(self._onQualityChanged)
 
-    def _onQualityChanged(self, index: int):
-        self.optionsChanged.emit()
+    def _onQualityChanged(self, _index: int):
+        step = self._task.steps[0] if self._task.steps else None
+        if step is not None:
+            step.videoFormat = self.qualityCombo.currentData() or "bv*+ba/b"

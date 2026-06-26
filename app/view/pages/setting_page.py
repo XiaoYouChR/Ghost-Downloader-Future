@@ -20,9 +20,9 @@ from app.config.constants import (
 from app.view.components.category_settings import CategoryRulesCard
 from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 from app.view.components.setting_cards import (
-    ClientProfileSettingCard, DefaultHeadersSettingCard, ProxySettingCard,
-    SelectFolderSettingCard, SpinBoxSettingCard,
+    ClientProfileSettingCard, DefaultHeadersSettingCard, ProxySettingCard, SpinBoxSettingCard,
 )
+from app.view.components.editors import FolderPicker
 
 
 class SettingPage(ScrollArea):
@@ -62,9 +62,18 @@ class SettingPage(ScrollArea):
             suffix=" KB/s", configItem=cfg.speedLimitation,
             singleStep=512, division=1 / 1024,
         )
-        self.downloadFolderCard = SelectFolderSettingCard(
-            cfg.downloadFolder, cfg.downloadFolder.value, self.tr("下载路径"),
-        )
+        from qfluentwidgets import SettingCard
+        self.downloadFolderCard = SettingCard(FluentIcon.FOLDER, self.tr("下载路径"), "")
+        self.downloadFolderPicker = FolderPicker(self.downloadFolderCard)
+        self.downloadRestoreButton = ToolButton(FluentIcon.CANCEL, self.downloadFolderCard)
+        self.downloadRestoreButton.setToolTip(self.tr("恢复默认路径"))
+        self.downloadRestoreButton.installEventFilter(ToolTipFilter(self.downloadRestoreButton))
+        self.downloadFolderPicker.refreshHistory()
+        self.downloadFolderPicker.setPath(cfg.downloadFolder.value)
+        self.downloadFolderCard.hBoxLayout.addWidget(self.downloadFolderPicker, 0, Qt.AlignmentFlag.AlignRight)
+        self.downloadFolderCard.hBoxLayout.addSpacing(8)
+        self.downloadFolderCard.hBoxLayout.addWidget(self.downloadRestoreButton, 0, Qt.AlignmentFlag.AlignRight)
+        self.downloadFolderCard.hBoxLayout.addSpacing(16)
         self.clientProfileCard = ClientProfileSettingCard()
 
         self.generalGroup.addSettingCards([
@@ -250,6 +259,12 @@ class SettingPage(ScrollArea):
         if sys.platform == "darwin":
             cfg.shouldShowDockIcon.valueChanged.connect(self.showDockSpeedCard.setEnabled)
 
+        self.downloadFolderPicker.pathChanged.connect(self._onDownloadFolderChanged)
+        self.downloadRestoreButton.clicked.connect(
+            lambda: (self.downloadFolderPicker.setPath(cfg.downloadFolder.defaultValue),
+                     cfg.set(cfg.downloadFolder, cfg.downloadFolder.defaultValue))
+        )
+
         self.browserPairTokenCard.clicked.connect(self._onCopyTokenClicked)
         self.regenerateTokenButton.clicked.connect(self._onRegenerateTokenClicked)
         self.installExtensionCard.clicked.connect(self._onExportExtensionClicked)
@@ -258,6 +273,15 @@ class SettingPage(ScrollArea):
         self.aboutCard.clicked.connect(self._onAboutCardClicked)
         self.feedbackCard.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
         self.openLogButton.clicked.connect(self._onOpenLogClicked)
+
+    def _onDownloadFolderChanged(self, path: str) -> None:
+        cfg.set(cfg.downloadFolder, path)
+        history = list(cfg.memoryDownloadFolders.value)
+        if path in history:
+            history.remove(path)
+        history.insert(0, path)
+        cfg.set(cfg.memoryDownloadFolders, history[:20])
+        self.downloadFolderPicker.refreshHistory()
 
     def _showRestartTooltip(self) -> None:
         InfoBar.success(self.tr("已配置"), self.tr("重启软件后生效"), duration=1500, parent=self)

@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import BodyLabel, ComboBox, CompactSpinBox, FluentIcon, TransparentToolButton
 
+from app.format import toReadableSize
+from app.models.task import TaskStatus
 from app.view.cards.draft_cards import UniversalDraftCard
 from app.view.cards.task_cards import UniversalTaskCard
 from app.view.components.editors import AutoSizingEdit
+
+if TYPE_CHECKING:
+    from .task import M3U8TaskStep
 
 
 class M3U8DraftCard(UniversalDraftCard):
@@ -16,19 +22,66 @@ class M3U8DraftCard(UniversalDraftCard):
 
 
 class M3U8TaskCard(UniversalTaskCard):
+
     def refresh(self):
         super().refresh()
+        if self._task.status == TaskStatus.RUNNING and self._task.fileSize <= 1:
+            step = self._step()
+            if step is not None:
+                progress = step.progress
+                self.sizeLabel.setText(
+                    f"{toReadableSize(step.receivedBytes)} / {progress:.1f}%"
+                )
+
+    def _step(self) -> M3U8TaskStep | None:
+        return self._task.steps[0] if self._task.steps else None
 
 
 class M3U8LiveTaskCard(UniversalTaskCard):
+
     def refresh(self):
         super().refresh()
-        step = self.task.steps[0] if self.task.steps else None
-        if step is not None:
-            self.statusLabel.setText(step.liveStatus or step.lastMessage or "")
+        step = self._step()
+        if step is None:
+            return
+        if self._task.status == TaskStatus.RUNNING:
+            elapsed = step.liveElapsed or "00m00s"
+            timeText = f"{elapsed} / {step.recordLimit}" if step.recordLimit else elapsed
+            self.etaLabel.setText(timeText)
+            if step.liveStatus == "Waiting":
+                self.sizeLabel.setText(self.tr("等待中"))
+            else:
+                self.sizeLabel.setText(self.tr("录制中"))
+        elif self._task.status == TaskStatus.COMPLETED:
+            self._showStatus(self.tr("录制已结束"))
 
-    def _refreshButtons(self):
-        pass
+    def _refreshButtons(self) -> None:
+        if self._task.status == TaskStatus.RUNNING:
+            self.toggleButton.setIcon(FluentIcon.ACCEPT)
+            self.toggleButton.setToolTip(self.tr("停止并定案"))
+            self.toggleButton.setEnabled(True)
+        elif self._task.status == TaskStatus.COMPLETED:
+            self.toggleButton.setIcon(FluentIcon.ACCEPT)
+            self.toggleButton.setEnabled(False)
+        else:
+            self.toggleButton.setIcon(FluentIcon.PLAY)
+            self.toggleButton.setEnabled(True)
+        self.verifyHashButton.setVisible(self._task.status == TaskStatus.COMPLETED)
+        self.verifyHashButton.setEnabled(self._task.status == TaskStatus.COMPLETED)
+
+    def _onToggleClicked(self) -> None:
+        if self._task.status == TaskStatus.RUNNING:
+            self.toggleButton.setEnabled(False)
+            step = self._step()
+            if step is not None:
+                step.terminate()
+        else:
+            from app.services.task_service import taskService
+            taskService.start(self._task)
+            self.refresh()
+
+    def _step(self) -> M3U8TaskStep | None:
+        return self._task.steps[0] if self._task.steps else None
 
 
 class M3U8OptionCard(QWidget):
@@ -65,6 +118,8 @@ class StreamSelectCard(M3U8OptionCard):
             if frameRate:
                 label += f" · {frameRate}fps"
             selectExpr = f"res=\"{width}x{height}\""
+            if frameRate:
+                selectExpr += f":frame=\"{int(frameRate)}*\""
             self.comboBox.addItem(label, userData=selectExpr)
             if self._initial and selectExpr == self._initial:
                 selectedIndex = index

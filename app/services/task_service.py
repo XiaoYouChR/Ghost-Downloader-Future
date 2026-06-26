@@ -262,7 +262,7 @@ class TaskService(QObject):
         from app.models.task import TaskStatus
         for taskId in self._queue.runningIds()[cfg.maxTaskNum.value:]:
             task = self._store.taskById(taskId)
-            if task is not None:
+            if task is not None and task.canPause:
                 self._cancelRun(task)
                 task.setStatus(TaskStatus.WAITING)
                 self._queue.wait(taskId)

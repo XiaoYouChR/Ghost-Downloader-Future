@@ -1,5 +1,4 @@
 
-from PySide6.QtWidgets import QFileIconProvider, QWidget
 from qfluentwidgets import FluentIcon, ToolButton
 
 from app.format import toReadableSize
@@ -22,11 +21,6 @@ def openFileSelection(task: FtpTask, parent) -> set[int] | None:
         dialog.deleteLater()
 
 
-class FtpFileSelectDialog(FileSelectDialog):
-    def _fileDisplayPath(self, file) -> str:
-        return file.relativePath
-
-
 class FtpDraftCard(UniversalDraftCard):
 
     @property
@@ -43,6 +37,7 @@ class FtpDraftCard(UniversalDraftCard):
             self._selectFilesButton.setFixedSize(28, 28)
             self._selectFilesButton.setToolTip(self.tr("选择文件"))
             self._selectFilesButton.installEventFilter(ToolTipFilter(self._selectFilesButton))
+        self._refreshSummary()
 
     def _initLayout(self):
         super()._initLayout()

@@ -9,6 +9,7 @@ from app.config.cfg import cfg
 from app.config.paths import APP_DATA_DIR
 from app.models.pack import BinaryRuntime, PackConfig
 from app.models.task import Task
+from app.platform.android import IS_ANDROID
 from app.platform.filesystem import findExecutable, toPosixPath
 
 RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
@@ -40,6 +41,7 @@ ytDlpConfig = YtDlpConfig()
 
 class YtDlpRuntime(BinaryRuntime):
     name = "yt-dlp"
+    canInstall = not IS_ANDROID
 
     def path(self) -> str:
         return findExecutable(Path(ytDlpConfig.installFolder.value), "yt-dlp")

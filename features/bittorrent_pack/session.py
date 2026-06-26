@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from loguru import logger
 from PySide6.QtCore import QObject, Signal
 
-from app.config.cfg import cfg, proxyUrl
+from app.config.cfg import cfg, proxy
 
 from .config import bittorrentConfig
 
@@ -173,12 +173,12 @@ class BTSession(QObject):
         return cfg.speedLimitation.value
 
     def _proxySettings(self) -> dict:
-        url = proxyUrl()
+        url = proxy()
         if not url:
             return {}
         parsed = urlsplit(url)
         import libtorrent as lt
-        if parsed.scheme.lower() != "socks5" or not parsed.hostname or not parsed.port:
+        if parsed.scheme.lower() not in {"socks5", "socks5h"} or not parsed.hostname or not parsed.port:
             return {}
         hasCredentials = bool(parsed.username or parsed.password)
         return {

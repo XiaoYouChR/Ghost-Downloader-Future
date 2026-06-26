@@ -21,7 +21,7 @@ class YouTubeParser(TaskParser):
         return any(host == h or host.endswith(f".{h}") for h in YOUTUBE_HOSTS)
 
     async def parse(self, options: TaskOptions) -> Task:
-        from app.config.cfg import proxyUrl
+        from app.config.cfg import proxy
 
         url = options.url.strip()
         headers = dict(options.headers)
@@ -36,9 +36,9 @@ class YouTubeParser(TaskParser):
                 url, "-f", videoFormat, "--no-playlist", "--skip-download", "--no-warnings",
                 "--print", "%(title)s", "--print", "%(filesize_approx)s",
             ]
-            proxy = proxyUrl()
-            if proxy:
-                args.extend(["--proxy", proxy])
+            proxyUrl = proxy()
+            if proxyUrl:
+                args.extend(["--proxy", proxyUrl])
             for name, value in headers.items():
                 text = str(value).strip()
                 if text:
@@ -58,6 +58,7 @@ class YouTubeParser(TaskParser):
                     probedSize = toInt(lines[1]) if len(lines) > 1 else SpecialFileSize.UNKNOWN
             except asyncio.TimeoutError:
                 process.kill()
+                await process.wait()
             except OSError:
                 pass
 

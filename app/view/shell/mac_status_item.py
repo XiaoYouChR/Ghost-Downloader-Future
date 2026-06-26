@@ -22,6 +22,12 @@ def tr(text: str) -> str:
 
 
 class MenuTarget(NSObject):
+    owner = None
+
+    def menuNeedsUpdate_(self, menu):
+        if self.owner is not None:
+            self.owner._refreshMenuItems()
+
     def showDashboard_(self, sender):
         signalBus.activationRequested.emit()
 
@@ -45,11 +51,16 @@ class MacStatusItem:
             NSVariableStatusItemLength
         )
         self._button = self._statusItem.button()
-        self._button.setImage_(self._toMenuBarIcon())
+        self._button.setImage_(self._buildMenuBarIcon())
         self._button.setImagePosition_(NSImageLeft)
 
         self._target = MenuTarget.alloc().init()
-        self._statusItem.setMenu_(self._buildMenu())
+        self._target.owner = self
+
+        menu = self._buildMenu()
+        self._startAllItem = menu.itemAtIndex_(1)
+        self._pauseAllItem = menu.itemAtIndex_(2)
+        self._statusItem.setMenu_(menu)
 
         cfg.shouldShowMenuBarSpeed.valueChanged.connect(self._onShowSpeedChanged)
 
@@ -65,18 +76,34 @@ class MacStatusItem:
     def _buildMenu(self) -> NSMenu:
         menu = NSMenu.alloc().init()
         menu.setAutoenablesItems_(False)
-        for title, selector in (
-            (tr("仪表盘"), "showDashboard:"),
-            (tr("全部开始"), "startAll:"),
-            (tr("全部暂停"), "pauseAll:"),
-            (tr("退出程序"), "quitApp:"),
+        menu.setDelegate_(self._target)
+        for title, selector, key, symbol in (
+            (tr("仪表盘"), "showDashboard:", "", "gauge.open.with.lines.needle.33percent"),
+            (tr("全部开始"), "startAll:", "", "play.fill"),
+            (tr("全部暂停"), "pauseAll:", "", "pause.fill"),
+            (tr("退出程序"), "quitApp:", "q", "power"),
         ):
-            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, selector, "")
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, selector, key)
             item.setTarget_(self._target)
+            image = NSImage.imageWithSystemSymbolName_accessibilityDescription_(symbol, None)
+            if image:
+                item.setImage_(image)
             menu.addItem_(item)
         return menu
 
-    def _toMenuBarIcon(self) -> NSImage:
+    def _refreshMenuItems(self) -> None:
+        from app.models.task import TaskStatus
+        from app.services.task_service import taskService
+
+        tasks = taskService.tasks
+        self._startAllItem.setEnabled_(
+            any(t.status in {TaskStatus.PAUSED, TaskStatus.FAILED, TaskStatus.WAITING} for t in tasks)
+        )
+        self._pauseAllItem.setEnabled_(
+            any(t.status == TaskStatus.RUNNING for t in tasks)
+        )
+
+    def _buildMenuBarIcon(self) -> NSImage:
         raw = QResource(":/image/logo_menubar_template.png").data()
         image = NSImage.alloc().initWithData_(NSData.dataWithBytes_length_(raw, len(raw)))
         size = image.size()

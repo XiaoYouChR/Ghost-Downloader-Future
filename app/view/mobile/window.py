@@ -36,7 +36,6 @@ class MobileMainWindow(QWidget):
 
         self._draft = TaskDraft(parent=self)
         self._draftDialog = TaskDraftDialog(self._draft, parent=self)
-        self._draftDialog.hide()
 
         self._initWidget()
         self._initLayout()

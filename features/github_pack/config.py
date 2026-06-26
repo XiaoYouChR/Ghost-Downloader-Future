@@ -6,10 +6,10 @@ from app.models.pack import PackConfig
 from qfluentwidgets import BoolValidator, ComboBox, ConfigValidator, FluentIcon, LineEdit, SettingCard, ToolButton, ToolTipFilter
 
 GITHUB_PROXY_SITES = (
-    "https://gh-proxy.com/",
-    "https://ghproxy.vip/",
-    "https://ghproxy.homeboyc.cn/",
-    "https://gh.llkk.cc/",
+    "https://gh-proxy.com",
+    "https://ghproxy.vip",
+    "https://ghproxy.homeboyc.cn",
+    "https://gh.llkk.cc",
 )
 CUSTOM_SITE_KEY = "__custom__"
 PROBE_TARGET = "https://raw.githubusercontent.com/asjdf/ghproxy/main/src/index.ts"
@@ -185,7 +185,7 @@ class GitHubProxySiteCard(SettingCard):
 
 class GitHubConfig(PackConfig):
     enabled = ConfigItem("GitHub", "Enabled", True, BoolValidator())
-    selectedSite = ConfigItem("GitHub", "SelectedSite", "", GitHubProxySiteValidator())
+    selectedSite = ConfigItem("GitHub", "SelectedSite", GITHUB_PROXY_SITES[0], GitHubProxySiteValidator())
     customSite = ConfigItem("GitHub", "CustomSite", "", GitHubProxySiteValidator())
 
     def setupSettings(self, settingPage):

@@ -9,7 +9,7 @@ from wreq import Client, Emulation, Proxy
 from wreq.emulation import Platform, Profile
 from wreq.redirect import Policy
 
-from app.config.cfg import cfg, proxyUrl
+from app.config.cfg import cfg, proxy
 
 FALLBACK_PROFILE = "chrome"
 
@@ -80,7 +80,7 @@ def buildClient(
     resolved = toEmulation("") if emulation is ... else emulation
     config: dict = {"tls_verify": cfg.shouldVerifySsl.value, "redirect": Policy.limited(10)}
 
-    url = proxyUrl()
+    url = proxy()
     if url:
         config["proxies"] = [Proxy.all(url)]
 

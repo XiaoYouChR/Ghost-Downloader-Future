@@ -94,6 +94,7 @@ def startApp(application):
         statusItem = MacStatusItem()
         statusItem.show()
         speedMeter.speedChanged.connect(statusItem.setSpeed)
+        application.statusItem = statusItem
         setupDockSpeed()
     else:
         from app.view.shell.tray import SystemTrayIcon

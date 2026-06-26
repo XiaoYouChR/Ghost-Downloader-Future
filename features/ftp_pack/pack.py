@@ -7,7 +7,7 @@ from loguru import logger
 
 from app.models.pack import FeaturePack, TaskParser
 from app.models.task import Task, TaskOptions, SpecialFileSize
-from app.platform.filesystem import toSafeFilename
+from app.platform.filesystem import toPosixPath, toSafeFilename
 from .task import (
     FTP_DEFAULT_PORT,
     FtpConnectionInfo,
@@ -84,8 +84,17 @@ class FtpParser(TaskParser):
                 if not files:
                     raise ValueError("该 FTP 目录中没有可下载的普通文件")
 
+            name = toSafeFilename(
+                sourcePath.name or connectionInfo.host,
+                fallback="ftp_download",
+            )
+
             steps = []
             for file in files:
+                if sourceType == "dir":
+                    outputFile = toPosixPath(options.outputFolder / name / file.relativePath)
+                else:
+                    outputFile = toPosixPath(options.outputFolder / name)
                 steps.append(FtpStep(
                     stepIndex=len(steps) + 1,
                     fileIndex=file.index,
@@ -93,12 +102,8 @@ class FtpParser(TaskParser):
                     fileSize=file.size,
                     canUseRangeRequests=canUseRangeRequests,
                     subworkerCount=options.subworkerCount,
+                    outputFile=outputFile,
                 ))
-
-            name = toSafeFilename(
-                sourcePath.name or connectionInfo.host,
-                fallback="ftp_download",
-            )
 
             task = FtpTask(
                 name=name,

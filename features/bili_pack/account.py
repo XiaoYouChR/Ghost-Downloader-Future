@@ -43,7 +43,7 @@ class BilibiliAccount(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._username = ""
-        self._polling = False
+        self._qrWorkId = ""
 
     @property
     def cookie(self) -> str:
@@ -59,14 +59,20 @@ class BilibiliAccount(QObject):
 
     def startQrLogin(self):
         from app.services.coroutine_runner import coroutineRunner
-        self._polling = True
-        coroutineRunner.submit(self._pollQrLogin(), done=self._onQrLoginDone, failed=self._onQrLoginFailed)
+        self.cancelQrLogin()
+        self._qrWorkId = coroutineRunner.submit(
+            self._pollQrLogin(), done=self._onQrLoginDone, failed=self._onQrLoginFailed,
+        )
 
     def cancelQrLogin(self):
-        self._polling = False
+        if self._qrWorkId:
+            from app.services.coroutine_runner import coroutineRunner
+            coroutineRunner.cancel(self._qrWorkId)
+            self._qrWorkId = ""
 
     def setCookie(self, cookie: str):
-        bilibiliConfig.userCookie.value = toCookie(cookie)
+        from app.config.cfg import cfg
+        cfg.set(bilibiliConfig.userCookie, toCookie(cookie))
         self.accountChanged.emit()
 
     def logout(self):
@@ -96,10 +102,8 @@ class BilibiliAccount(QObject):
 
             coroutineRunner.post(self.qrStateChanged.emit, 0, loginUrl)
 
-            while self._polling:
+            while True:
                 await asyncio.sleep(QR_POLL_INTERVAL)
-                if not self._polling:
-                    return ""
 
                 response = await client.get(QR_POLL_API, params={"qrcode_key": qrCodeKey})
                 response.raise_for_status()
@@ -123,8 +127,6 @@ class BilibiliAccount(QObject):
                         return toCookie("; ".join(f"{k}={v}" for k, v in items.items()))
 
                 return ""
-
-            return ""
         finally:
             client.close()
 
@@ -184,28 +186,30 @@ class BilibiliAccount(QObject):
             client.close()
 
     def _onQrLoginDone(self, cookie: str):
-        self._polling = False
+        self._qrWorkId = ""
         if cookie:
             self.setCookie(cookie)
             self.fetchAccountInfo()
 
-    def _onQrLoginFailed(self, error: Exception):
-        self._polling = False
+    def _onQrLoginFailed(self, error: str):
+        self._qrWorkId = ""
+        self.qrStateChanged.emit(-1, error)
 
     def _onLogoutDone(self, shouldClear: bool):
         if shouldClear:
-            bilibiliConfig.userCookie.value = ""
+            from app.config.cfg import cfg
+            cfg.set(bilibiliConfig.userCookie, "")
             self._username = ""
             self.accountChanged.emit()
 
-    def _onLogoutFailed(self, error: Exception):
-        pass
+    def _onLogoutFailed(self, error: str):
+        self.accountChanged.emit()
 
     def _onAccountInfoDone(self, result: dict):
         self._username = result.get("uname", "")
         self.accountChanged.emit()
 
-    def _onAccountInfoFailed(self, error: Exception):
+    def _onAccountInfoFailed(self, error: str):
         pass
 
 

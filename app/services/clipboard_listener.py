@@ -4,6 +4,8 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 from loguru import logger
 
+from app.services.feature_service import featureService
+
 
 class ClipboardListener(QObject):
     urlsDetected = Signal(list)
@@ -28,6 +30,19 @@ class ClipboardListener(QObject):
         if self._clipboard.ownsClipboard():
             return
 
+        urls = self._downloadableUrls()
+        if not urls:
+            return
+
+        if QApplication.platformName() == "wayland":
+            snapshot = tuple(urls)
+            if snapshot == self._lastUrls:
+                return
+            self._lastUrls = snapshot
+
+        self.urlsDetected.emit(urls)
+
+    def _downloadableUrls(self) -> list[str]:
         urls: list[str] = []
         for line in self._clipboard.text().splitlines():
             url = line.strip()
@@ -35,17 +50,11 @@ class ClipboardListener(QObject):
                 continue
             try:
                 parsed = urlparse(url)
-            except ValueError:
+            except ValueError as error:
+                logger.warning("跳过无效剪贴板链接 {}: {}", url, error)
                 continue
-            if parsed.scheme in {"http", "https", "ftp", "ftps", "magnet"} and parsed.geturl() == url:
+            if not parsed.scheme or parsed.geturl() != url:
+                continue
+            if featureService.matches(url):
                 urls.append(url)
-
-        if not urls:
-            return
-
-        snapshot = tuple(urls)
-        if snapshot == self._lastUrls:
-            return
-        self._lastUrls = snapshot
-
-        self.urlsDetected.emit(urls)
+        return urls

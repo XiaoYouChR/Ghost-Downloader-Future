@@ -10,7 +10,6 @@ from app.models.pack import BinaryRuntime, PackConfig
 from app.models.task import Task
 from app.platform.android import IS_ANDROID, nativeLibraryDir
 from app.platform.filesystem import findExecutable
-from app.view.components.setting_cards import RuntimeCard
 
 
 RELEASE_API = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest"
@@ -21,7 +20,7 @@ class FFmpegConfig(PackConfig):
 
     def setupSettings(self, settingPage):
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
-        from app.view.components.setting_cards import SelectFolderSettingCard
+        from app.view.components.setting_cards import RuntimeCard, SelectFolderSettingCard
 
         self.ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", settingPage.container)
         self.installFolderCard = SelectFolderSettingCard(
@@ -29,7 +28,7 @@ class FFmpegConfig(PackConfig):
             self.tr("FFmpeg 安装目录"),
             self.ffmpegGroup,
         )
-        self.runtimeCard = FFmpegRuntimeCard(ffmpegRuntime, self.ffmpegGroup)
+        self.runtimeCard = RuntimeCard(ffmpegRuntime, self.ffmpegGroup)
 
         self.installFolderCard.pathChanged.connect(lambda _: self.runtimeCard.refreshStatus())
         self.ffmpegGroup.addSettingCards([self.installFolderCard, self.runtimeCard])
@@ -42,6 +41,7 @@ ffmpegConfig = FFmpegConfig()
 
 class FFmpegRuntime(BinaryRuntime):
     name = "FFmpeg"
+    canInstall = sys.platform == "win32"
 
     def path(self) -> str:
         if IS_ANDROID:
@@ -140,19 +140,6 @@ class FFmpegRuntime(BinaryRuntime):
             fileSize=fileSize,
             name=f"FFmpeg 安装 ({machine})",
         )
-
-
-class FFmpegRuntimeCard(RuntimeCard):
-    def _initWidget(self):
-        super()._initWidget()
-        if IS_ANDROID:
-            self.installButton.hide()
-        elif sys.platform == "win32":
-            self.installButton.setText(self.tr("一键安装"))
-        elif sys.platform == "darwin":
-            self.installButton.setText(self.tr("复制安装命令"))
-        else:
-            self.installButton.setText(self.tr("复制安装命令"))
 
 
 ffmpegRuntime = FFmpegRuntime()

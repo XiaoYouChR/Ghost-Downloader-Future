@@ -72,10 +72,12 @@ class YtDlpTaskStep(TaskStep):
         ffmpegPath = ffmpegRuntime.path()
         if ffmpegPath:
             args.extend(["--ffmpeg-location", ffmpegPath])
-        from app.config.cfg import proxyUrl
-        proxy = proxyUrl()
-        if proxy:
-            args.extend(["--proxy", proxy])
+        from app.config.cfg import cfg, proxy
+        proxyUrl = proxy()
+        if proxyUrl:
+            args.extend(["--proxy", proxyUrl])
+        if cfg.isSpeedLimitEnabled.value:
+            args.extend(["--limit-rate", str(cfg.speedLimitation.value)])
         for name, value in self.headers.items():
             text = value.strip()
             if text:

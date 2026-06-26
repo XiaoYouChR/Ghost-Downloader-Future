@@ -54,6 +54,7 @@ class PackConfig:
 
 class BinaryRuntime:
     name: str = ""
+    canInstall: bool = False
 
     def path(self) -> str:
         raise NotImplementedError

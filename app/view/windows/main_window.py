@@ -62,8 +62,7 @@ class MainWindow(MSFluentWindow):
             position=NavigationItemPosition.TOP,
         )
         for page in featureService.pages():
-            self.addSubInterface(page, page.windowIcon() if hasattr(page, 'windowIcon') else FluentIcon.LIBRARY,
-                                 page.objectName() or page.__class__.__name__,
+            self.addSubInterface(page, page.navIcon, page.navTitle,
                                  position=NavigationItemPosition.TOP)
         self.addSubInterface(self.settingPage, FluentIcon.SETTING, self.tr("设置"),
                              position=NavigationItemPosition.BOTTOM)

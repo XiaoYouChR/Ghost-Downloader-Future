@@ -156,6 +156,7 @@ class TaskStep:
 class Task:
     _registry: ClassVar[dict[str, Type[Task]]] = {}
     canEdit: ClassVar[bool] = False
+    fileType: ClassVar[type] = TaskFile
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

@@ -146,6 +146,7 @@ m3u8Config = M3U8Config()
 
 class M3U8Runtime(BinaryRuntime):
     name = "N_m3u8DL-RE"
+    canInstall = not IS_ANDROID
 
     def path(self) -> str:
         if IS_ANDROID:

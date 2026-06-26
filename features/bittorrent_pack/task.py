@@ -44,6 +44,7 @@ class BTFile(TaskFile):
 @dataclass(kw_only=True, eq=False)
 class BTTask(Task):
     packId: str = "bt"
+    fileType = BTFile
     sourceType: str = "torrent"
     torrentData: str = ""
     resumeData: str = ""

@@ -45,7 +45,7 @@ class Language(Enum):
 class ProxyValidator(ConfigValidator):
     PATTERN = compile(
         r"^"
-        r"(?P<protocol>http|https|socks4|socks5)://"
+        r"(?P<protocol>http|https|socks4|socks5|socks5h)://"
         r"(?:(?P<user>\w+):(?P<password>[\w!@#$%^&*()]+)@)?"
         r"(?:"
         r"(?P<ip>(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|"
@@ -237,7 +237,7 @@ class Config(QConfig):
 cfg = Config()
 
 
-def proxyUrl() -> str | None:
+def proxy() -> str | None:
     if cfg.proxyServer.value == "Off":
         return None
     if cfg.proxyServer.value == "Auto":

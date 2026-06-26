@@ -15,7 +15,7 @@ from qfluentwidgets import (
     IconWidget,
 )
 
-from app.config.cfg import cfg, proxyUrl
+from app.config.cfg import cfg, proxy
 from app.view.components.banners import WarningBanner
 
 
@@ -90,7 +90,7 @@ class ProxySettingCard(ExpandGroupSettingCard):
         self.customWidget = QWidget(self.view)
         self.customLayout = QHBoxLayout(self.customWidget)
         self.protocolCombo = ComboBox(self.customWidget)
-        self.protocolCombo.addItems(["socks4", "socks5", "http", "https"])
+        self.protocolCombo.addItems(["socks4", "socks5", "socks5h", "http", "https"])
         self.ipEdit = LineEdit(self.customWidget)
         self.ipEdit.setPlaceholderText(self.tr("代理 IP 地址"))
         self.portEdit = LineEdit(self.customWidget)
@@ -139,7 +139,7 @@ class ProxySettingCard(ExpandGroupSettingCard):
 
         self.radioLayout.setSpacing(19)
         self.radioLayout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.radioLayout.setContentsMargins(48, 5, 0, 18)
+        self.radioLayout.setContentsMargins(48, 18, 0, 18)
         for btn in (self.offRadio, self.autoRadio, self.customRadio):
             self.buttonGroup.addButton(btn)
             self.radioLayout.addWidget(btn)
@@ -162,10 +162,10 @@ class ProxySettingCard(ExpandGroupSettingCard):
 
         self.viewLayout.setSpacing(0)
         self.viewLayout.setContentsMargins(0, 0, 0, 0)
+        self.addGroupWidget(self.compatBanner)
         self.addGroupWidget(self.radioWidget)
         self.addGroupWidget(self.customWidget)
         self.addGroupWidget(self.credWidget)
-        self.addGroupWidget(self.compatBanner)
 
     def _onRadioClicked(self, button) -> None:
         self.choiceLabel.setText(button.text())
@@ -176,9 +176,12 @@ class ProxySettingCard(ExpandGroupSettingCard):
 
         if button is self.autoRadio:
             cfg.set(self._configItem, "Auto")
-            self._showProxyUrl(proxyUrl())
+            self._showProxyUrl(proxy())
         elif button is self.offRadio:
             cfg.set(self._configItem, "Off")
+        elif button is self.customRadio:
+            if self.ipEdit.text() == self.tr("未检测到代理"):
+                self.ipEdit.clear()
         self._refreshCompatBanner()
 
     def _showProxyUrl(self, url: str | None) -> None:
@@ -198,21 +201,35 @@ class ProxySettingCard(ExpandGroupSettingCard):
 
     def _refreshCompatBanner(self) -> None:
         if self.offRadio.isChecked():
-            self.compatBanner.setVisible(False)
-            return
-        if self.autoRadio.isChecked():
-            url = proxyUrl()
+            scheme = ""
+        elif self.autoRadio.isChecked():
+            url = proxy()
             scheme = urlsplit(url).scheme.lower() if url else ""
         else:
             scheme = self.protocolCombo.currentText().lower()
-        if not scheme:
-            self.compatBanner.setVisible(False)
-            return
-        from app.services.feature_service import featureService
-        self.compatBanner.setVisible(any(
-            p.proxySchemes is not None and scheme not in p.proxySchemes
-            for p in featureService.packs
-        ))
+
+        if scheme == "socks5h":
+            scheme = "socks5"
+        if scheme:
+            from app.services.feature_service import featureService
+            visible = any(
+                p.proxySchemes is not None and scheme not in p.proxySchemes
+                for p in featureService.packs
+            )
+        else:
+            visible = False
+
+        if self.compatBanner.isVisible() != visible:
+            self.compatBanner.setVisible(visible)
+            h = 0
+            for i in range(self.viewLayout.count()):
+                item = self.viewLayout.itemAt(i)
+                widget = item.widget() if item else None
+                if widget and widget.isVisible():
+                    h += widget.sizeHint().height()
+            self.spaceWidget.setFixedHeight(h)
+            if self.isExpand:
+                self.setFixedHeight(self.card.height() + h)
 
     def _buildProxyUrl(self) -> str:
         protocol = self.protocolCombo.currentText()
@@ -237,44 +254,34 @@ class SelectFolderSettingCard(SettingCard):
 
     def __init__(self, configItem: ConfigItem, defaultPath: str,
                  title: str, parent=None):
-        super().__init__(FluentIcon.FOLDER, title, "", parent)
+        super().__init__(FluentIcon.FOLDER, title, configItem.value, parent)
         self._configItem = configItem
         self._defaultPath = defaultPath
 
-        from app.view.components.editors import FolderPicker
-
-        self.picker = FolderPicker(self)
+        self.browseButton = ToolButton(FluentIcon.FOLDER, self)
         self.restoreButton = ToolButton(FluentIcon.CANCEL, self)
+        self.browseButton.setToolTip(self.tr("浏览文件夹"))
+        self.browseButton.installEventFilter(ToolTipFilter(self.browseButton))
         self.restoreButton.setToolTip(self.tr("恢复默认路径"))
         self.restoreButton.installEventFilter(ToolTipFilter(self.restoreButton))
 
-        self.picker.refreshHistory()
-        self.picker.setPath(configItem.value)
-
-        self.hBoxLayout.addWidget(self.picker, 0, Qt.AlignmentFlag.AlignRight)
+        self.hBoxLayout.addWidget(self.browseButton, 0, Qt.AlignmentFlag.AlignRight)
         self.hBoxLayout.addSpacing(8)
         self.hBoxLayout.addWidget(self.restoreButton, 0, Qt.AlignmentFlag.AlignRight)
         self.hBoxLayout.addSpacing(16)
 
-        self.picker.pathChanged.connect(self._onPathChanged)
-        self.restoreButton.clicked.connect(self._onResetClicked)
+        self.browseButton.clicked.connect(self._onBrowseClicked)
+        self.restoreButton.clicked.connect(lambda: self._setPath(self._defaultPath))
 
-    def _onPathChanged(self, path: str) -> None:
+    def _onBrowseClicked(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self.window(), self.tr("选择文件夹"), self._configItem.value)
+        if folder:
+            self._setPath(folder)
+
+    def _setPath(self, path: str) -> None:
         cfg.set(self._configItem, path)
-        self._addToHistory(path)
-        self.picker.refreshHistory()
+        self.setContent(path)
         self.pathChanged.emit(path)
-
-    def _onResetClicked(self) -> None:
-        self.picker.setPath(self._defaultPath)
-        cfg.set(self._configItem, self._defaultPath)
-
-    def _addToHistory(self, folder: str) -> None:
-        history = list(cfg.memoryDownloadFolders.value)
-        if folder in history:
-            history.remove(folder)
-        history.insert(0, folder)
-        cfg.set(cfg.memoryDownloadFolders, history[:20])
 
 
 class ClientProfileSettingCard(SettingCard):
@@ -400,6 +407,8 @@ class RuntimeCard(SettingCard):
         self._bind()
 
     def _initWidget(self) -> None:
+        if not self._runtime.canInstall:
+            self.installButton.hide()
         self.refreshButton.setToolTip(self.tr("刷新"))
         self.refreshButton.installEventFilter(ToolTipFilter(self.refreshButton))
 
@@ -442,7 +451,6 @@ class RuntimeCard(SettingCard):
         from app.services.coroutine_runner import coroutineRunner
 
         self.installButton.setEnabled(False)
-        self.installButton.setText(self.tr("准备中..."))
         coroutineRunner.submit(
             self._runtime.installTask(),
             done=self._onInstallTaskCreated,
@@ -453,12 +461,10 @@ class RuntimeCard(SettingCard):
         from app.services.task_service import taskService
 
         self.installButton.setEnabled(True)
-        self.installButton.setText(self.tr("一键安装"))
         taskService.add(task)
 
     def _onInstallTaskFailed(self, error: str) -> None:
         self.installButton.setEnabled(True)
-        self.installButton.setText(self.tr("一键安装"))
         InfoBar.error(
             self.tr("安装失败"),
             error,

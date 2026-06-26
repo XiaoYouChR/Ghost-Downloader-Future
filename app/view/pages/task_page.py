@@ -227,7 +227,7 @@ class TaskPage(QWidget):
 
     def _initLayout(self) -> None:
         toolBarLayout = QHBoxLayout(self.toolBar)
-        toolBarLayout.setContentsMargins(5, 5, 5, 5)
+        toolBarLayout.setContentsMargins(16, 10, 16, 10)
         toolBarLayout.addWidget(self.startAllButton)
         toolBarLayout.addWidget(self.pauseAllButton)
         toolBarLayout.addWidget(self.selectButton)
@@ -284,6 +284,9 @@ class TaskPage(QWidget):
         cfg.isCategoryEnabled.valueChanged.connect(lambda v: self.categoryFilterButton.setVisible(bool(v)))
         from app.services.category_service import categoryService
         categoryService.categoriesChanged.connect(self._rebuildCategoryFilterMenu)
+
+        for task in taskService.tasks:
+            self._onTaskAdded(task)
 
     # ── intent methods ──
 
@@ -575,6 +578,8 @@ class TaskPage(QWidget):
         self._refreshViewport()
 
     def _onTaskAdded(self, task: Task) -> None:
+        if task.taskId in self._cards:
+            return
         card = featureService.taskCard(task, self.scrollWidget)
         card.hide()
         self._cards[task.taskId] = card

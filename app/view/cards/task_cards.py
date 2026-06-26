@@ -211,8 +211,7 @@ class UniversalTaskCard(TaskCard):
         task = self._task
         progress, speed, receivedBytes = task.currentSnapshot()
 
-        if isinstance(self.progressBar, ProgressBar):
-            self.progressBar.setValue(int(progress))
+        self.progressBar.setValue(int(progress))
 
         if task.fileSize > 0:
             self.sizeLabel.setText(f"{toReadableSize(receivedBytes)}/{toReadableSize(task.fileSize)}")
@@ -220,8 +219,7 @@ class UniversalTaskCard(TaskCard):
             self.sizeLabel.setText(f"{toReadableSize(receivedBytes)}/--")
 
         if task.status == TaskStatus.RUNNING:
-            if isinstance(self.progressBar, ProgressBar):
-                self.progressBar.setError(False)
+            self.progressBar.setError(False)
             if self.statusLabel.isVisible():
                 self.statusLabel.hide()
                 self.speedLabel.show()
@@ -236,21 +234,19 @@ class UniversalTaskCard(TaskCard):
         elif task.status == TaskStatus.COMPLETED:
             if task.fileSize > 0:
                 self.progressBar.hide()
-            elif isinstance(self.progressBar, IndeterminateProgressBar):
+            else:
                 self.progressBar.stop()
             self._showStatus(self.tr("任务已经完成"))
             self.nameLabel.setText(task.name)
             self._refreshIcon()
 
         elif task.status == TaskStatus.FAILED:
-            if isinstance(self.progressBar, ProgressBar):
-                self.progressBar.error()
+            self.progressBar.error()
             self._showStatus(task.lastError or self.tr("下载过程中发生错误，请稍后重试"))
 
         else:
-            if isinstance(self.progressBar, ProgressBar):
-                self.progressBar.setError(False)
-                self.progressBar.pause()
+            self.progressBar.setError(False)
+            self.progressBar.pause()
             if task.status == TaskStatus.PAUSED:
                 self._showStatus(self.tr("任务已经暂停"))
             elif task.status == TaskStatus.WAITING:

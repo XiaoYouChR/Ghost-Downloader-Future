@@ -67,7 +67,8 @@ def fromDict(data: Any, cls: type) -> Any:
 
         rawFiles = obj.pop("files", None)
         if rawFiles is not None:
-            obj["files"] = [TaskFile(**filterFields(TaskFile, f)) for f in rawFiles]
+            fileCls = getattr(targetCls, "fileType", TaskFile)
+            obj["files"] = [fileCls(**filterFields(fileCls, f)) for f in rawFiles]
 
     return targetCls(**filterFields(targetCls, obj))
 
