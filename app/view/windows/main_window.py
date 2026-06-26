@@ -98,7 +98,7 @@ class MainWindow(MSFluentWindow):
     def _bind(self) -> None:
         from app.view.components.labels import IconBodyLabel
 
-        cfg.customThemeMode.valueChanged.connect(lambda v: self._setTheme(v, isUserTriggered=True))
+        cfg.customThemeMode.valueChanged.connect(self._onUserThemeChanged)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
         qconfig.themeChanged.connect(lambda: IconBodyLabel.clearCache())
 
@@ -286,6 +286,9 @@ class MainWindow(MSFluentWindow):
             if color.isValid() and cfg.themeColor.value != color:
                 setThemeColor(color, save=False)
                 return
+
+    def _onUserThemeChanged(self, value) -> None:
+        self._setTheme(value, isUserTriggered=True)
 
     def _setTheme(self, value, isUserTriggered=False) -> None:
         from qfluentwidgets import setTheme

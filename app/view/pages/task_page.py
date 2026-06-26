@@ -281,7 +281,7 @@ class TaskPage(QWidget):
         self.commandView.invertSelectAction.triggered.connect(self.invertSelection)
         self.commandView.cancelAction.triggered.connect(lambda: self.setSelectionMode(False))
 
-        cfg.isCategoryEnabled.valueChanged.connect(lambda v: self.categoryFilterButton.setVisible(bool(v)))
+        cfg.isCategoryEnabled.valueChanged.connect(self._onCategoryEnabledChanged)
         from app.services.category_service import categoryService
         categoryService.categoriesChanged.connect(self._rebuildCategoryFilterMenu)
 
@@ -387,6 +387,9 @@ class TaskPage(QWidget):
             dialog.deleteLater()
         else:
             plan.clear()
+
+    def _onCategoryEnabledChanged(self, value) -> None:
+        self.categoryFilterButton.setVisible(bool(value))
 
     def _rebuildCategoryFilterMenu(self) -> None:
         from app.services.category_service import categoryService

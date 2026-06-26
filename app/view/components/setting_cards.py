@@ -320,8 +320,11 @@ class ClientProfileSettingCard(SettingCard):
         self.hBoxLayout.addSpacing(16)
 
     def _bind(self) -> None:
+        cfg.clientProfile.valueChanged.connect(self._onProfileChanged)
+
+    def _onProfileChanged(self, value: str) -> None:
         from app.client import toProfileLabel
-        cfg.clientProfile.valueChanged.connect(lambda v: self.button.setText(toProfileLabel(v)))
+        self.button.setText(toProfileLabel(value))
 
     def _onPick(self, value: str) -> None:
         cfg.set(cfg.clientProfile, value)
