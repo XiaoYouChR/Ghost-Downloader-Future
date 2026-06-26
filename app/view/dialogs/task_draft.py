@@ -38,7 +38,7 @@ class TaskDraftDialog(MessageBoxBase):
         self.titleLabel = SubtitleLabel(self.tr("添加任务"), self)
         self.urlEdit = AutoSizingEdit(self)
         self.progressBar = IndeterminateProgressBar(self)
-        self.resultGroup = DraftCardGroup(self)
+        self.draftGroup = DraftCardGroup(self)
         self.optionGroup = OptionCardGroup(self)
         self.importButton = PushButton(FluentIcon.FOLDER_ADD, self.tr("导入文件"), self)
         self.headerLayout = QHBoxLayout()
@@ -66,7 +66,7 @@ class TaskDraftDialog(MessageBoxBase):
         self.viewLayout.addLayout(self.headerLayout)
         self.viewLayout.addWidget(self.urlEdit)
         self.viewLayout.addWidget(self.progressBar)
-        self.viewLayout.addWidget(self.resultGroup)
+        self.viewLayout.addWidget(self.draftGroup)
         self.viewLayout.addWidget(self.optionGroup)
 
     def _bind(self) -> None:
@@ -143,10 +143,10 @@ class TaskDraftDialog(MessageBoxBase):
         self._draft.setUrls(self._urls())
 
     def _onParseSucceeded(self, url: str, task: Task) -> None:
-        card = featureService.draftCard(task, self.resultGroup)
+        card = featureService.draftCard(task, self.draftGroup)
         card.categoryPicked.connect(lambda cid: self._draft.setUrlCategory(url, cid))
         card.editRequested.connect(lambda u=url: self._onEditRequested(u))
-        self.resultGroup.addCard(card)
+        self.draftGroup.addCard(card)
         self._cardByUrl[url] = card
 
     def _onEditRequested(self, url: str) -> None:
@@ -173,18 +173,18 @@ class TaskDraftDialog(MessageBoxBase):
         for url in list(self._cardByUrl):
             if url not in currentUrls:
                 card = self._cardByUrl.pop(url)
-                self.resultGroup.scrollLayout.removeWidget(card)
+                self.draftGroup.scrollLayout.removeWidget(card)
                 card.deleteLater()
         for i, url in enumerate(self._draft.urls()):
             card = self._cardByUrl.get(url)
             if card is not None:
-                layout = self.resultGroup.scrollLayout
+                layout = self.draftGroup.scrollLayout
                 if layout.indexOf(card) != i:
                     layout.insertWidget(i, card, alignment=Qt.AlignmentFlag.AlignTop)
 
     def _onCleared(self) -> None:
         self._cardByUrl.clear()
-        self.resultGroup.clear()
+        self.draftGroup.clear()
 
     def _urls(self) -> list[str]:
         text = self.urlEdit.toPlainText()

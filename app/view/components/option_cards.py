@@ -1,15 +1,23 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QWidget
 from qfluentwidgets import (
-    Action, BodyLabel, FluentIcon, IconWidget, LineEdit, Slider,
+    Action, BodyLabel, FluentIcon, IconWidget, LineEdit, Slider, isDarkTheme,
 )
 
 from app.config.cfg import cfg
 
 
-class SelectFolderCard(QWidget):
+class OptionCard(QWidget):
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setPen(QColor(0, 0, 0, 96 if isDarkTheme() else 48))
+        painter.drawLine(self.rect().topLeft(), self.rect().topRight())
+
+
+class SelectFolderCard(OptionCard):
 
     def __init__(self, parent=None, *, initial: Path | None = None):
         super().__init__(parent)
@@ -46,7 +54,7 @@ class SelectFolderCard(QWidget):
             self.pathEdit.setText(selected)
 
 
-class SubworkerCountCard(QWidget):
+class SubworkerCountCard(OptionCard):
 
     def __init__(self, parent=None, *, initial: int = 0):
         super().__init__(parent)
@@ -87,7 +95,7 @@ class SubworkerCountCard(QWidget):
         self.valueLabel.adjustSize()
 
 
-class ClientProfileCard(QWidget):
+class ClientProfileCard(OptionCard):
 
     def __init__(self, parent=None, *, initial: str = ""):
         from qfluentwidgets import DropDownPushButton, RoundMenu

@@ -3,15 +3,16 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QUrl, QTimer, Qt
-from PySide6.QtGui import QIcon, QDesktopServices
+from PySide6.QtCore import QEvent, QRect, QUrl, QTimer, Qt
+from PySide6.QtGui import QColor, QIcon, QDesktopServices, QPalette
 from PySide6.QtWidgets import QApplication
 from qfluentwidgets import (
     MSFluentWindow, FluentIcon, NavigationItemPosition, MessageBox, Theme, InfoBar, InfoBarPosition,
+    setThemeColor, qconfig,
 )
 
 from app.config.cfg import cfg
-from app.config.constants import FEEDBACK_URL
+from app.config.constants import AUTHOR_URL, FEEDBACK_URL
 from app.services.task_draft import TaskDraft
 from app.services.task_service import taskService
 from app.signal_bus import signalBus
@@ -26,7 +27,11 @@ if TYPE_CHECKING:
 class MainWindow(MSFluentWindow):
 
     def __init__(self, parent=None):
+        self._isGeometryRestored = False
+        self._isBackgroundEffectDirty = False
         super().__init__(parent)
+        self.setMicaEffectEnabled(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self.taskPage = TaskPage(self)
         self.settingPage = SettingPage(self)
@@ -35,7 +40,7 @@ class MainWindow(MSFluentWindow):
         self._draft.taskConfirmed.connect(taskService.add)
         self._draftDialog = TaskDraftDialog(self._draft, parent=self)
 
-        self._geometryApplied = False
+        self._packPages: dict[type, object] = {}
 
         self._initWidget()
         self._initLayout()
@@ -61,19 +66,47 @@ class MainWindow(MSFluentWindow):
             onClick=lambda: self.addUrls([]),
             position=NavigationItemPosition.TOP,
         )
-        for page in featureService.pages():
-            self.addSubInterface(page, page.navIcon, page.navTitle,
-                                 position=NavigationItemPosition.TOP)
+        for PageClass in featureService.pages():
+            self.navigationInterface.addItem(
+                routeKey=PageClass.__name__,
+                text=PageClass.title,
+                icon=PageClass.icon,
+                onClick=lambda _, cls=PageClass: self._showPackPage(cls),
+                position=NavigationItemPosition.TOP,
+            )
         self.addSubInterface(self.settingPage, FluentIcon.SETTING, self.tr("设置"),
                              position=NavigationItemPosition.BOTTOM)
 
+    def systemTitleBarRect(self, size) -> QRect:
+        return QRect(0, 10, 75, size.height())
+
+    def _normalBackgroundColor(self):
+        from qfluentwidgets import isDarkTheme
+        if self.styleSheet() == "":
+            return self._darkBackgroundColor if isDarkTheme() else self._lightBackgroundColor
+        return QColor(0, 0, 0, 0)
+
+    def _showPackPage(self, pageClass: type) -> None:
+        page = self._packPages.get(pageClass)
+        if page is None:
+            page = pageClass(self)
+            self.addSubInterface(page, pageClass.icon, pageClass.title,
+                                 position=NavigationItemPosition.TOP)
+            self._packPages[pageClass] = page
+        self.switchTo(page)
+
     def _bind(self) -> None:
-        cfg.customThemeMode.valueChanged.connect(self._setTheme)
+        from app.view.components.labels import IconBodyLabel
+
+        cfg.customThemeMode.valueChanged.connect(lambda v: self._setTheme(v, isUserTriggered=True))
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
-        signalBus.updateAvailable.connect(self._onUpdateAvailable)
+        qconfig.themeChanged.connect(lambda: IconBodyLabel.clearCache())
 
         if sys.platform == "win32":
             cfg.backgroundEffect.valueChanged.connect(self._setBackgroundEffect)
+        if sys.platform == "darwin":
+            from PySide6.QtGui import QKeySequence, QShortcut
+            QShortcut(QKeySequence.StandardKey.Close, self).activated.connect(self.close)
 
     def addUrls(self, urls: list[str]) -> None:
         if urls:
@@ -118,7 +151,7 @@ class MainWindow(MSFluentWindow):
             browserService.rejectPair(session, requestId)
 
     def _onUpdateAvailable(self, release) -> None:
-        from qfluentwidgets import PrimaryPushButton
+        from qfluentwidgets import PrimaryPushButton, PushButton
         from app.view.dialogs.release_info import ReleaseInfoDialog
 
         infoBar = InfoBar(
@@ -131,35 +164,80 @@ class MainWindow(MSFluentWindow):
             position=InfoBarPosition.BOTTOM_RIGHT,
             parent=self,
         )
-        detailButton = PrimaryPushButton(FluentIcon.CHAT, self.tr("查看详情"))
+        downloadButton = PrimaryPushButton(FluentIcon.DOWNLOAD, self.tr("立即下载"))
+        downloadButton.clicked.connect(lambda: self._onDownloadUpdateClicked(release))
+        infoBar.addWidget(downloadButton)
+        detailButton = PushButton(FluentIcon.CHAT, self.tr("查看详情"))
         detailButton.clicked.connect(lambda: ReleaseInfoDialog(release, self).exec())
         infoBar.addWidget(detailButton)
+        sponsorButton = PushButton(FluentIcon.HEART, self.tr("请作者喝咖啡"))
+        sponsorButton.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(AUTHOR_URL)))
+        infoBar.addWidget(sponsorButton)
         infoBar.show()
 
+    def _onDownloadUpdateClicked(self, release) -> None:
+        from app.models.task import TaskOptions
+        from app.services.coroutine_runner import coroutineRunner
+        from app.services.feature_service import featureService
+        from app.update import bestAsset
+
+        asset = bestAsset(release)
+        if asset is None:
+            InfoBar.warning(
+                self.tr("未找到适配的安装包"),
+                self.tr("请在版本详情中手动选择"),
+                duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=self,
+            )
+            from app.view.dialogs.release_info import ReleaseInfoDialog
+            ReleaseInfoDialog(release, self).exec()
+            return
+
+        coroutineRunner.submit(
+            featureService.parse(TaskOptions(url=asset.downloadUrl)),
+            done=lambda task: taskService.add(task),
+            failed=lambda error: InfoBar.error(
+                self.tr("创建下载任务失败"), str(error),
+                duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=self,
+            ),
+        )
+
     def alertException(self, message: str) -> None:
+        from qfluentwidgets import TransparentToolButton, ToolTipFilter
+
         dialog = MessageBox(
             self.tr("程序发生异常"),
             self.tr("点击\"确定\"后将复制错误信息并打开反馈页面。\n\n{0}").format(message),
             self,
         )
+        logButton = TransparentToolButton(FluentIcon.DOCUMENT, dialog)
+        logButton.setToolTip(self.tr("查看日志"))
+        logButton.installEventFilter(ToolTipFilter(logButton))
+        logButton.clicked.connect(lambda: self._openLogFolder())
+        dialog.titleLabel.parentWidget().layout().addWidget(logButton)
+
         if dialog.exec():
             QApplication.clipboard().setText(message)
             QDesktopServices.openUrl(QUrl(FEEDBACK_URL))
 
+    def _openLogFolder(self) -> None:
+        from app.config.paths import APP_DATA_DIR
+        from app.platform.desktop import openFolder
+        openFolder(APP_DATA_DIR)
+
     def closeEvent(self, event) -> None:
-        event.ignore()
         if sys.platform == "darwin" and self.isFullScreen():
+            event.ignore()
             self.showNormal()
-            QTimer.singleShot(1000, self.hide)
+            QTimer.singleShot(1000, self.close)
             return
         if not self.isMaximized():
             cfg.set(cfg.geometry, self.geometry())
-        self.hide()
+        event.accept()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if not self._geometryApplied:
-            self._geometryApplied = True
+        if not self._isGeometryRestored:
+            self._isGeometryRestored = True
             saved = cfg.geometry.value
             if saved.isValid() and QApplication.screenAt(saved.center()) is not None:
                 self.setGeometry(saved)
@@ -187,9 +265,33 @@ class MainWindow(MSFluentWindow):
 
         return super().nativeEvent(eventType, message)
 
-    def _setTheme(self, value) -> None:
-        from qfluentwidgets import setTheme, Theme
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            self._refreshThemeColor()
+        if self._isBackgroundEffectDirty and event.type() == QEvent.Type.ThemeChange:
+            self._isBackgroundEffectDirty = False
+            self._refreshBackgroundEffect()
+
+    def _refreshThemeColor(self) -> None:
+        palette = QApplication.palette()
+        for role in (QPalette.ColorRole.Accent, QPalette.ColorRole.Highlight):
+            color = palette.color(role)
+            if color.isValid() and cfg.themeColor.value != color:
+                setThemeColor(color, save=False)
+                return
+
+    def _setTheme(self, value, isUserTriggered=False) -> None:
+        from qfluentwidgets import setTheme
         setTheme(value if isinstance(value, Theme) else Theme.AUTO, save=False)
+        if (
+            not isUserTriggered
+            and sys.platform == "win32"
+            and cfg.backgroundEffect.value in {"Mica", "MicaBlur", "MicaAlt"}
+        ):
+            self._isBackgroundEffectDirty = True
+            return
+        self._isBackgroundEffectDirty = False
         if sys.platform == "win32":
             self._refreshBackgroundEffect()
 
@@ -223,3 +325,48 @@ class MainWindow(MSFluentWindow):
             self.windowEffect.setAeroEffect(self.winId())
         elif value == "None":
             self.setStyleSheet("")
+
+
+if sys.platform == "win32":
+    from app.platform.windows import isWin10
+
+    if isWin10():
+        from ctypes import pointer
+        from qframelesswindow import FramelessWindow, WindowEffect
+        from qframelesswindow.windows.c_structures import ACCENT_STATE, WINDOWCOMPOSITIONATTRIB
+
+        def _resetAcrylicEffect(self, hWnd):
+            hWnd = int(hWnd)
+            self.accentPolicy.AccentState = ACCENT_STATE.ACCENT_ENABLE_TRANSPARENTGRADIENT.value
+            self.winCompAttrData.Attribute = WINDOWCOMPOSITIONATTRIB.WCA_ACCENT_POLICY.value
+            self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
+
+        def _win10NativeEvent(self, eventType, message):
+            if eventType == "windows_generic_MSG":
+                from ctypes.wintypes import MSG
+                from app.platform.application import WM_USER_WAKE, WM_COPYDATA, fileUrisFromCopyData
+                msg = MSG.from_address(message.__int__())
+
+                WM_ENTERSIZEMOVE = 561
+                WM_EXITSIZEMOVE = 562
+                if msg.message == WM_ENTERSIZEMOVE and cfg.backgroundEffect.value == "Acrylic":
+                    self.windowEffect.resetAcrylicEffect(self.winId())
+                elif msg.message == WM_EXITSIZEMOVE and cfg.backgroundEffect.value == "Acrylic":
+                    from qfluentwidgets import isDarkTheme
+                    self.windowEffect.setAcrylicEffect(
+                        self.winId(), "00000030" if isDarkTheme() else "FFFFFF30",
+                    )
+                elif msg.message == WM_USER_WAKE:
+                    from app.platform.desktop import raiseWindow
+                    raiseWindow(self)
+                    return True, 0
+                elif msg.message == WM_COPYDATA:
+                    uris = fileUrisFromCopyData(msg.lParam)
+                    if uris:
+                        signalBus.openFileRequested.emit(uris)
+                    return True, 1
+
+            return FramelessWindow.nativeEvent(self, eventType, message)
+
+        WindowEffect.resetAcrylicEffect = _resetAcrylicEffect
+        MainWindow.nativeEvent = _win10NativeEvent

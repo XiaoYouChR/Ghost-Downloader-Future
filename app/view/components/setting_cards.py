@@ -15,7 +15,7 @@ from qfluentwidgets import (
     IconWidget,
 )
 
-from app.config.cfg import cfg, proxy
+from app.config.cfg import cfg, proxy, BASE_HEADERS
 from app.view.components.banners import WarningBanner
 
 
@@ -169,7 +169,6 @@ class ProxySettingCard(ExpandGroupSettingCard):
 
     def _onRadioClicked(self, button) -> None:
         self.choiceLabel.setText(button.text())
-        self.choiceLabel.adjustSize()
         isCustom = button is self.customRadio
         self.customWidget.setEnabled(isCustom)
         self.credWidget.setEnabled(isCustom)
@@ -212,24 +211,17 @@ class ProxySettingCard(ExpandGroupSettingCard):
             scheme = "socks5"
         if scheme:
             from app.services.feature_service import featureService
-            visible = any(
+            self.compatBanner.setVisible(any(
                 p.proxySchemes is not None and scheme not in p.proxySchemes
                 for p in featureService.packs
-            )
+            ))
         else:
-            visible = False
+            self.compatBanner.hide()
 
-        if self.compatBanner.isVisible() != visible:
-            self.compatBanner.setVisible(visible)
-            h = 0
-            for i in range(self.viewLayout.count()):
-                item = self.viewLayout.itemAt(i)
-                widget = item.widget() if item else None
-                if widget and widget.isVisible():
-                    h += widget.sizeHint().height()
-            self.spaceWidget.setFixedHeight(h)
-            if self.isExpand:
-                self.setFixedHeight(self.card.height() + h)
+        h = self.viewLayout.sizeHint().height()
+        self.spaceWidget.setFixedHeight(h)
+        if self.isExpand:
+            self.setFixedHeight(self.card.height() + h)
 
     def _buildProxyUrl(self) -> str:
         protocol = self.protocolCombo.currentText()
@@ -341,15 +333,28 @@ class DefaultHeadersSettingCard(PushSettingCard):
         self.clicked.connect(self._onClicked)
 
     def _onClicked(self) -> None:
-        from qfluentwidgets import MessageBoxBase, SubtitleLabel
+        from qfluentwidgets import MessageBoxBase, SubtitleLabel, TransparentToolButton
         from app.view.components.editors import AutoSizingEdit, headersToText, headersFromText
 
         dialog = MessageBoxBase(self.window())
         dialog.widget.setMinimumWidth(500)
-        dialog.viewLayout.addWidget(SubtitleLabel(self.tr("编辑默认请求头"), dialog))
+
+        titleRow = QHBoxLayout()
+        titleRow.addWidget(SubtitleLabel(self.tr("编辑默认请求头"), dialog))
+        titleRow.addStretch(1)
+        resetButton = TransparentToolButton(FluentIcon.HISTORY, dialog)
+        resetButton.setToolTip(self.tr("恢复默认"))
+        resetButton.installEventFilter(ToolTipFilter(resetButton))
+        titleRow.addWidget(resetButton)
+        dialog.viewLayout.addLayout(titleRow)
+
         edit = AutoSizingEdit(dialog, minimumVisibleLines=8, maximumVisibleLines=20)
         edit.setPlainText(headersToText(cfg.defaultRequestHeaders.value))
         dialog.viewLayout.addWidget(edit)
+
+        resetButton.clicked.connect(
+            lambda: edit.setPlainText(headersToText(dict(BASE_HEADERS)))
+        )
 
         if dialog.exec():
             headers = headersFromText(edit.toPlainText())

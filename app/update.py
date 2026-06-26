@@ -5,9 +5,9 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-import niquests
 from PySide6.QtCore import QVersionNumber
 
+from app.client import buildClient
 from app.config.cfg import cfg, proxy
 from app.config.constants import VERSION
 
@@ -61,17 +61,14 @@ class Release:
 
 
 async def fetchRelease() -> Release:
-    async with niquests.AsyncSession(timeout=30, happy_eyeballs=True) as session:
-        session.trust_env = False
-        url = proxy()
-        response = await session.get(
-            RELEASE_API,
-            proxies={"https": url} if url else None,
-            verify=cfg.shouldVerifySsl.value,
-            allow_redirects=True,
-        )
+    client = buildClient(headers={"accept": "application/vnd.github+json"})
+    try:
+        response = await client.get(RELEASE_API)
         response.raise_for_status()
-        return Release.fromResponse(response.json())
+        data = await response.json()
+        return Release.fromResponse(data)
+    finally:
+        client.close()
 
 
 def isOutdated(release: Release) -> bool:

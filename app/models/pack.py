@@ -79,6 +79,11 @@ class BinaryRuntime:
         raise NotImplementedError
 
 
+class PackPage:
+    icon: ...
+    title: str = ""
+
+
 class FeaturePack:
     packId: str = ""
     config: PackConfig | None = None
@@ -101,7 +106,7 @@ class FeaturePack:
     def fileTypes(self) -> list[FileType]:
         return []
 
-    def pages(self) -> list[QWidget]:
+    def pages(self) -> list[type[PackPage]]:
         return []
 
     def start(self):

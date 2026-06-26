@@ -32,7 +32,8 @@ def setupEnvironment():
     logger.info("Ghost Downloader v{} launched", VERSION)
 
 
-def startApp(application):
+def startApp(application, isSilent=False):
+    from PySide6.QtGui import QIcon
     from app.config.cfg import cfg
     from app.services.coroutine_runner import coroutineRunner
     from app.services.speed_meter import speedMeter
@@ -50,8 +51,11 @@ def startApp(application):
 
     sys.excepthook = exceptionHook
 
+    application.setQuitOnLastWindowClosed(False)
     coroutineRunner.start()
     featureService.load()
+    taskService.taskStarted.connect(lambda _: speedMeter.start())
+    taskService.tasksAllCompleted.connect(speedMeter.stop)
     taskService.resumeSaved()
     featureService.start()
 
@@ -66,7 +70,13 @@ def startApp(application):
         if window is None:
             window = MainWindow()
             window.destroyed.connect(onWindowDestroyed)
-        window.show()
+            from qfluentwidgets import SplashScreen
+            splash = SplashScreen(window.windowIcon(), window, enableShadow=False)
+            splash.raise_()
+            window.show()
+            splash.finish()
+        else:
+            window.show()
         from app.platform.desktop import raiseWindow
         raiseWindow(window)
         return window
@@ -74,6 +84,7 @@ def startApp(application):
     signalBus.activationRequested.connect(show)
     signalBus.openFileRequested.connect(lambda uris: show().addUrls(uris))
     signalBus.exceptionCaught.connect(lambda msg: show().alertException(msg))
+    signalBus.updateAvailable.connect(lambda release: show()._onUpdateAvailable(release))
     browserService.taskDraftRequested.connect(lambda tasks: show().addTasks(tasks))
     browserService.pairRequested.connect(lambda req: show().confirmPair(req))
 
@@ -98,7 +109,7 @@ def startApp(application):
         setupDockSpeed()
     else:
         from app.view.shell.tray import SystemTrayIcon
-        tray = SystemTrayIcon(show().windowIcon(), parent=application)
+        tray = SystemTrayIcon(QIcon(":/image/logo.png"), parent=application)
         tray.show()
 
     from app.platform.android import IS_ANDROID
@@ -112,7 +123,17 @@ def startApp(application):
     from app.services.plan import plan
     taskService.tasksAllCompleted.connect(plan.trigger)
 
-    show()
+    if not isSilent:
+        show()
+
+    if cfg.shouldCheckUpdateAtStartup.value:
+        from app.update import fetchRelease, isOutdated
+
+        def _onStartupReleaseFetched(release):
+            if isOutdated(release):
+                signalBus.updateAvailable.emit(release)
+
+        coroutineRunner.submit(fetchRelease(), done=_onStartupReleaseFetched)
 
     def stopApp():
         taskService.stop()
@@ -130,5 +151,5 @@ if __name__ == "__main__":
 
     setupEnvironment()
     app = SingletonApplication(sys.argv, DESKTOP_ID)
-    startApp(app)
+    startApp(app, isSilent="--silence" in sys.argv)
     sys.exit(app.exec())

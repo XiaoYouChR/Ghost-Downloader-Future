@@ -9,7 +9,7 @@ from app.platform import file_association
 from app.services.pack_loader import loadPacks
 
 if TYPE_CHECKING:
-    from app.models.pack import FeaturePack, TaskParser, FileType
+    from app.models.pack import FeaturePack, TaskParser, FileType, PackPage
     from app.models.task import Task, TaskOptions
     from PySide6.QtWidgets import QWidget
 
@@ -66,7 +66,7 @@ class FeatureService(QObject):
         pack = self._packByPackId.get(task.packId)
         return pack.draftCard(task, parent) if pack else None
 
-    def pages(self) -> list:
+    def pages(self) -> list[type[PackPage]]:
         result = []
         for pack in self._packs:
             result.extend(pack.pages())
