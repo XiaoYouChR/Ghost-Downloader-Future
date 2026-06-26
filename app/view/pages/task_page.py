@@ -109,7 +109,8 @@ class EmptyStatusWidget(QWidget):
 class TaskPage(QWidget):
     ROW_SPACING = 8
     SIDE_PADDING = 12
-    VIEWPORT_BUFFER = 3
+    BOTTOM_PADDING = 12
+    VIEWPORT_BUFFER = 5
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -491,7 +492,10 @@ class TaskPage(QWidget):
 
         self._displayOrder = [t.taskId for t in tasks]
         stride = TaskCard.ROW_HEIGHT + self.ROW_SPACING
-        self.scrollWidget.setFixedHeight(max(0, len(self._displayOrder) * stride - self.ROW_SPACING))
+        count = len(self._displayOrder)
+        self.scrollWidget.setFixedHeight(
+            count * stride - self.ROW_SPACING + self.BOTTOM_PADDING if count else 0
+        )
         self._refreshViewport()
 
         if self._displayOrder:

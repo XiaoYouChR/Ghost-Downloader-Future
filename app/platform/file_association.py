@@ -19,17 +19,17 @@ if TYPE_CHECKING:
     from app.models.pack import FileType
 
 
-def apply(fileTypes: list[FileType]) -> None:
+def register(fileTypes: list[FileType]) -> None:
     try:
         if sys.platform == "win32":
-            _applyWindows(fileTypes)
+            _registerWindows(fileTypes)
         elif sys.platform == "linux":
-            _applyLinux(fileTypes)
+            _registerLinux(fileTypes)
     except Exception as e:
         logger.opt(exception=e).error("文件关联注册失败")
 
 
-def _applyWindows(fileTypes: list[FileType]) -> None:
+def _registerWindows(fileTypes: list[FileType]) -> None:
     command = f'"{QCoreApplication.applicationFilePath().replace("/", chr(92))}" "%1"'
     for fileType in fileTypes:
         iconPath = str(executableDir / "app" / "assets" / "file_icons" / f"{fileType.icon}.ico").replace("/", "\\")
@@ -48,7 +48,7 @@ def _applyWindows(fileTypes: list[FileType]) -> None:
     ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
 
 
-def _applyLinux(fileTypes: list[FileType]) -> None:
+def _registerLinux(fileTypes: list[FileType]) -> None:
     desktopDir = Path.home() / ".local/share/applications"
     serviceDir = Path.home() / ".local/share/dbus-1/services"
     desktopFile = desktopDir / f"{DESKTOP_ID}.desktop"

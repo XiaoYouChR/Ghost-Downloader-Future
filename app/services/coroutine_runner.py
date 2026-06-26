@@ -42,11 +42,12 @@ class CoroutineRunner(QThread):
             entry = self._pending.pop(workId, None)
             if entry is None:
                 return
-            cb_done, cb_failed, a, kw = entry
-            if error is None and cb_done is not None:
-                self.post(cb_done, result, *a, **kw)
-            elif error is not None and cb_failed is not None:
-                self.post(cb_failed, error, *a, **kw)
+            done, failed, args, kwargs = entry
+            if error is None:
+                if done:
+                    self.post(done, result, *args, **kwargs)
+            elif failed:
+                self.post(failed, error, *args, **kwargs)
 
         def schedule():
             self._running[workId] = self._loop.create_task(execute())

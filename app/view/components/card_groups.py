@@ -52,6 +52,10 @@ class DraftCardGroup(TitledCardGroup):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+    def addCard(self, card: QWidget) -> None:
+        super().addCard(card)
+        self.updateGeometry()
+
     def clear(self) -> None:
         while self.scrollLayout.count():
             child = self.scrollLayout.takeAt(0)

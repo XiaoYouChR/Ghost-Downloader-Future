@@ -49,6 +49,8 @@ class MainWindow(MSFluentWindow):
             self.titleBar.hBoxLayout.insertSpacing(0, 60)
 
     def _initLayout(self) -> None:
+        from app.services.feature_service import featureService
+
         self.addSubInterface(self.taskPage, FluentIcon.DOWNLOAD, self.tr("下载任务"),
                              position=NavigationItemPosition.TOP)
         self.navigationInterface.addItem(
@@ -59,6 +61,10 @@ class MainWindow(MSFluentWindow):
             onClick=lambda: self.addUrls([]),
             position=NavigationItemPosition.TOP,
         )
+        for page in featureService.pages():
+            self.addSubInterface(page, page.windowIcon() if hasattr(page, 'windowIcon') else FluentIcon.LIBRARY,
+                                 page.objectName() or page.__class__.__name__,
+                                 position=NavigationItemPosition.TOP)
         self.addSubInterface(self.settingPage, FluentIcon.SETTING, self.tr("设置"),
                              position=NavigationItemPosition.BOTTOM)
 

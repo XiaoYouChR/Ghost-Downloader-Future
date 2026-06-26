@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Property, QPropertyAnimation, QEasingCurve, Signal, Qt
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QLabel
-from qfluentwidgets import BodyLabel, StrongBodyLabel, isDarkTheme
+from qfluentwidgets import BodyLabel, StrongBodyLabel, ToolTipFilter, isDarkTheme
 
 if TYPE_CHECKING:
     from qfluentwidgets import FluentIconBase
@@ -81,6 +81,7 @@ class EditableLabel(StrongBodyLabel):
         self._underlineAnim.setDuration(150)
         self._underlineAnim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.installEventFilter(ToolTipFilter(self))
 
     def text(self) -> str:
         return self._text
@@ -101,6 +102,7 @@ class EditableLabel(StrongBodyLabel):
         else:
             elided = self._text
         super().setText(elided)
+        self.setToolTip(self._text if elided != self._text else "")
 
     @Property(float)
     def underlineProgress(self) -> float:

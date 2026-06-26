@@ -26,10 +26,10 @@ class FFmpegConfig(PackConfig):
         self.ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", settingPage.container)
         self.installFolderCard = SelectFolderSettingCard(
             ffmpegConfig.installFolder, f"{APP_DATA_DIR}/FFmpeg",
-            self.tr("FFmpeg 安装目录"), self.tr("选择 FFmpeg 安装目录"),
+            self.tr("FFmpeg 安装目录"),
             self.ffmpegGroup,
         )
-        self.runtimeCard = FFmpegRuntimeCard(self.ffmpegGroup)
+        self.runtimeCard = FFmpegRuntimeCard(ffmpegRuntime, self.ffmpegGroup)
 
         self.installFolderCard.pathChanged.connect(lambda _: self.runtimeCard.refreshStatus())
         self.ffmpegGroup.addSettingCards([self.installFolderCard, self.runtimeCard])

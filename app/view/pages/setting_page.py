@@ -57,9 +57,10 @@ class SettingPage(ScrollArea):
 
     def _initCards(self) -> None:
         self.speedLimitationCard = SpinBoxSettingCard(
-            cfg.speedLimitation, FluentIcon.SPEED_OFF, self.tr("下载限速"),
+            FluentIcon.SPEED_OFF, self.tr("下载限速"),
             self.tr("当下载任务界面限速开关开启时，所有任务将根据此值进行限速"),
-            suffix=" KB/s", singleStep=512, division=1 / 1024,
+            suffix=" KB/s", configItem=cfg.speedLimitation,
+            singleStep=512, division=1 / 1024,
         )
         self.downloadFolderCard = SelectFolderSettingCard(
             cfg.downloadFolder, cfg.downloadFolder.value, self.tr("下载路径"),
@@ -146,9 +147,9 @@ class SettingPage(ScrollArea):
         ])
 
         self.zoomCard = SpinBoxSettingCard(
-            cfg.dpiScale, FluentIcon.ZOOM, self.tr("界面缩放"),
+            FluentIcon.ZOOM, self.tr("界面缩放"),
             self.tr("改变应用程序界面的缩放比例, 0% 为自动"),
-            suffix=" %", division=100,
+            suffix=" %", configItem=cfg.dpiScale, division=100,
         )
 
         personalCards = [
@@ -233,11 +234,14 @@ class SettingPage(ScrollArea):
         ])
 
     def _initLayout(self) -> None:
+        from app.services.feature_service import featureService
+
         self.addSettingGroup(self.generalGroup)
         self.addSettingGroup(self.categoryGroup)
         self.addSettingGroup(self.browserGroup)
         self.addSettingGroup(self.personalGroup)
         self.addSettingGroup(self.softwareGroup)
+        featureService.settingGroups(self)
         self.addSettingGroup(self.aboutGroup)
 
     def _bind(self) -> None:

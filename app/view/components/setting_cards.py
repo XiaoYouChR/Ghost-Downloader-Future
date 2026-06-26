@@ -21,9 +21,9 @@ from app.view.components.banners import WarningBanner
 
 class SpinBoxSettingCard(SettingCard):
 
-    def __init__(self, configItem: RangeConfigItem, icon, title: str,
-                 content: str = "", parent=None, suffix: str = "",
-                 singleStep: int = 50, division: float = 1):
+    def __init__(self, icon, title: str, content: str = "",
+                 suffix: str = "", configItem: RangeConfigItem = None,
+                 parent=None, singleStep: int = 50, division: float = 1):
         super().__init__(icon, title, content, parent)
         self._configItem = configItem
         self._division = division
@@ -51,8 +51,8 @@ class SpinBoxSettingCard(SettingCard):
 
 class LineEditSettingCard(SettingCard):
 
-    def __init__(self, configItem: ConfigItem, icon, title: str,
-                 content: str = "", parent=None, placeholder: str = ""):
+    def __init__(self, icon, title: str, content: str = "",
+                 configItem: ConfigItem = None, parent=None, placeholder: str = ""):
         super().__init__(icon, title, content, parent)
         self._configItem = configItem
 
@@ -353,12 +353,11 @@ class DefaultHeadersSettingCard(PushSettingCard):
 class SelectFileCard(SettingCard):
     pathChanged = Signal(str)
 
-    def __init__(self, configItem: ConfigItem, icon, title: str, hint: str,
-                 browseTitle: str, parent=None):
-        super().__init__(icon, title, configItem.value or hint, parent)
+    def __init__(self, icon, title: str, hint: str = "",
+                 configItem: ConfigItem = None, parent=None):
+        super().__init__(icon, title, configItem.value or hint if configItem else hint, parent)
         self._configItem = configItem
         self._hint = hint
-        self._browseTitle = browseTitle
 
         self.chooseFileButton = ToolButton(FluentIcon.FOLDER, self)
         self.clearButton = ToolButton(FluentIcon.CANCEL, self)
@@ -376,7 +375,7 @@ class SelectFileCard(SettingCard):
         self.clearButton.clicked.connect(lambda: self._setPath(""))
 
     def _onChooseFile(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self.window(), self._browseTitle)
+        path, _ = QFileDialog.getOpenFileName(self.window(), self.tr("选择文件"))
         if path:
             self._setPath(path)
 

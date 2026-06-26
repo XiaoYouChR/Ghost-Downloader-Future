@@ -67,7 +67,7 @@ class M3U8Config(PackConfig):
         self.m3u8Group = CollapsibleSettingCardGroup(self.tr("流媒体下载"), "m3u8", settingPage.container)
         self.installFolderCard = SelectFolderSettingCard(
             self.installFolder, f"{APP_DATA_DIR}/M3U8DL",
-            self.tr("N_m3u8DL-RE 安装目录"), self.tr("选择 N_m3u8DL-RE 安装目录"),
+            self.tr("N_m3u8DL-RE 安装目录"),
             self.m3u8Group,
         )
         self.runtimeCard = RuntimeCard(m3u8Runtime, self.m3u8Group)
@@ -110,9 +110,9 @@ class M3U8Config(PackConfig):
                 self.tr("每次刷新最多取走的分片数量，0 为自动"), "", self.liveTakeCount, self.m3u8Group, 1),
             ComboBoxSettingCard(self.decryptionEngine, FluentIcon.CERTIFICATE, self.tr("解密引擎"),
                 self.tr("调用的第三方解密程序"), texts=["FFmpeg", "MP4Decrypt", "Shaka Packager"], parent=self.m3u8Group),
-            SelectFileCard(self.decryptionBinaryPath, FluentIcon.COMMAND_PROMPT, self.tr("解密引擎二进制路径"),
+            SelectFileCard(FluentIcon.COMMAND_PROMPT, self.tr("解密引擎二进制路径"),
                 self.tr("MP4Decrypt / Shaka Packager 可执行文件路径，留空则使用 FFmpeg"),
-                self.tr("选择解密引擎可执行文件"), self.m3u8Group),
+                configItem=self.decryptionBinaryPath, parent=self.m3u8Group),
             SwitchSettingCard(FluentIcon.FINGERPRINT, self.tr("MP4 实时解密"),
                 self.tr("下载 MP4 分片时实时解密"), self.shouldUseMp4RealTimeDecryption, self.m3u8Group),
             SpinBoxSettingCard(FluentIcon.SPEED_HIGH, self.tr("限速"),

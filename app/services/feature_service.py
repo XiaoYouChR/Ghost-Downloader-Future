@@ -61,6 +61,17 @@ class FeatureService(QObject):
         pack = self._packByPackId.get(task.packId)
         return pack.draftCard(task, parent) if pack else None
 
+    def pages(self) -> list:
+        result = []
+        for pack in self._packs:
+            result.extend(pack.pages())
+        return result
+
+    def settingGroups(self, settingPage) -> None:
+        for pack in self._packs:
+            if pack.config:
+                pack.config.setupSettings(settingPage)
+
     def fileTypes(self) -> list[FileType]:
         types = []
         for pack in self._packs:
@@ -73,7 +84,7 @@ class FeatureService(QObject):
             if pack.config and not pack.config.isFileAssociationEnabled():
                 continue
             types.extend(pack.fileTypes())
-        file_association.apply(types)
+        file_association.register(types)
 
     def stop(self) -> None:
         for pack in self._packs:

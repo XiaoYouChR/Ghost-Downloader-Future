@@ -1,6 +1,6 @@
 
 from PySide6.QtWidgets import QFileIconProvider
-from qfluentwidgets import FluentIcon, PrimaryPushButton, ToolButton
+from qfluentwidgets import FluentIcon, ToolButton
 
 from app.format import toReadableSize, toReadableTime
 from app.models.task import TaskStatus
@@ -42,9 +42,15 @@ class BTDraftCard(UniversalDraftCard):
         super()._initWidget()
         icon = QFileIconProvider.IconType.File if self.task.isSingleFile else QFileIconProvider.IconType.Folder
         self.iconLabel.setImage(QFileIconProvider().icon(icon).pixmap(16, 16))
+        self.iconLabel.setFixedSize(16, 16)
         self._selectFilesButton = None
         if len(self.task.files) > 1:
-            self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
+            from qfluentwidgets import ToolTipFilter
+            from qfluentwidgets import TransparentToolButton
+            self._selectFilesButton = TransparentToolButton(FluentIcon.LIBRARY, self)
+            self._selectFilesButton.setFixedSize(28, 28)
+            self._selectFilesButton.setToolTip(self.tr("选择文件"))
+            self._selectFilesButton.installEventFilter(ToolTipFilter(self._selectFilesButton))
 
     def _initLayout(self):
         super()._initLayout()
@@ -73,7 +79,6 @@ class BTDraftCard(UniversalDraftCard):
 class BTTaskCard(UniversalTaskCard):
     def __init__(self, task: BTTask, parent=None):
         super().__init__(task, parent)
-        self.task: BTTask = task
         self.selectFilesButton = ToolButton(FluentIcon.LIBRARY, self)
         self.hBoxLayout.insertWidget(
             self.hBoxLayout.indexOf(self.verifyHashButton),

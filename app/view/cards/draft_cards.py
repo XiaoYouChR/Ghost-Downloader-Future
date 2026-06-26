@@ -44,8 +44,6 @@ class DraftCard(QWidget):
     def _initWidget(self) -> None:
         self.setFixedHeight(35)
         self.nameLabel.setMinimumWidth(0)
-        self.nameLabel.setToolTip(self._task.name)
-        self.nameLabel.installEventFilter(ToolTipFilter(self.nameLabel))
         self.nameEdit.setText(self._task.name)
         self.nameEdit.hide()
         self.categoryButton.setFixedSize(28, 28)
@@ -86,7 +84,6 @@ class DraftCard(QWidget):
         if newName and newName != self._task.name:
             self._task.setName(newName)
             self.nameLabel.setText(self._task.name)
-            self.nameLabel.setToolTip(self._task.name)
             self.nameEdit.setText(self._task.name)
             self._refreshFileIcon()
         self.nameEdit.hide()

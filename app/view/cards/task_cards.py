@@ -270,6 +270,7 @@ class UniversalTaskCard(TaskCard):
         from PySide6.QtCore import QFileInfo
         from PySide6.QtWidgets import QFileIconProvider
         self.iconLabel.setPixmap(QFileIconProvider().icon(QFileInfo(self._task.outputPath)).pixmap(48, 48))
+        self.iconLabel.setFixedSize(48, 48)
 
     def _refreshCategoryIcon(self) -> None:
         if not cfg.isCategoryEnabled.value or not self._task.category:

@@ -37,8 +37,12 @@ class FtpDraftCard(UniversalDraftCard):
         super()._initWidget()
         self._selectFilesButton = None
         if self.task.files and len(self.task.files) > 1:
-            from qfluentwidgets import PrimaryPushButton
-            self._selectFilesButton = PrimaryPushButton(self.tr("选择文件"), self)
+            from qfluentwidgets import ToolTipFilter
+            from qfluentwidgets import TransparentToolButton
+            self._selectFilesButton = TransparentToolButton(FluentIcon.LIBRARY, self)
+            self._selectFilesButton.setFixedSize(28, 28)
+            self._selectFilesButton.setToolTip(self.tr("选择文件"))
+            self._selectFilesButton.installEventFilter(ToolTipFilter(self._selectFilesButton))
 
     def _initLayout(self):
         super()._initLayout()
@@ -69,7 +73,6 @@ class FtpDraftCard(UniversalDraftCard):
 class FtpTaskCard(UniversalTaskCard):
     def __init__(self, task: FtpTask, parent=None):
         super().__init__(task, parent)
-        self.task: FtpTask = task
         self.selectFilesButton = ToolButton(FluentIcon.LIBRARY, self)
         self.hBoxLayout.insertWidget(
             self.hBoxLayout.indexOf(self.verifyHashButton),
