@@ -408,7 +408,6 @@ class RuntimeCard(SettingCard):
         from app.services.runtime_status import runtimeStatusService
 
         self._runtime: BinaryRuntime = runtime
-        self._runtimeId = runtimeStatusService.runtimeId(runtime)
         super().__init__(FluentIcon.INFO, runtime.name, self.tr("正在检测运行时..."), parent)
 
         self.installButton = PrimaryPushButton(self.tr("一键安装"), self)
@@ -442,7 +441,6 @@ class RuntimeCard(SettingCard):
         from app.services.runtime_status import runtimeStatusService
 
         runtimeStatusService.refresh(self._runtime, force=force)
-        self.updateStatus(runtimeStatusService.status(self._runtime))
 
     def updateStatus(self, status) -> None:
         self.refreshButton.setEnabled(not status.isBusy)
@@ -463,8 +461,8 @@ class RuntimeCard(SettingCard):
     def _onInstallFolderChanged(self, *_args) -> None:
         self.refreshStatus()
 
-    def _onRuntimeStatusChanged(self, runtimeId: str, status) -> None:
-        if runtimeId == self._runtimeId:
+    def _onRuntimeStatusChanged(self, status) -> None:
+        if status.runtimeId == self._runtime.runtimeId:
             self.updateStatus(status)
 
     def _onInstallClicked(self) -> None:

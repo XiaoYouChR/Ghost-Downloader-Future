@@ -56,6 +56,11 @@ class BinaryRuntime:
     name: str = ""
     canInstall: bool = False
 
+    @property
+    def runtimeId(self) -> str:
+        cls = type(self)
+        return f"{cls.__module__}.{cls.__qualname__}"
+
     def path(self) -> str:
         raise NotImplementedError
 

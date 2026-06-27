@@ -21,28 +21,23 @@ class RuntimeStatus:
 
 
 class RuntimeStatusService(QObject):
-    statusChanged = Signal(str, object)
+    statusChanged = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._statuses: dict[str, RuntimeStatus] = {}
         self._workIds: dict[str, str] = {}
 
-    def runtimeId(self, runtime: BinaryRuntime) -> str:
-        cls = runtime.__class__
-        return f"{cls.__module__}.{cls.__qualname__}"
-
     def status(self, runtime: BinaryRuntime) -> RuntimeStatus:
-        runtimeId = self.runtimeId(runtime)
-        status = self._statuses.get(runtimeId)
+        status = self._statuses.get(runtime.runtimeId)
         if status is not None:
             return status
-        return RuntimeStatus(runtimeId, runtime.name, path=runtime.path())
+        return RuntimeStatus(runtime.runtimeId, runtime.name, path=runtime.path())
 
     def refresh(self, runtime: BinaryRuntime, force: bool = False) -> None:
         from app.services.coroutine_runner import coroutineRunner
 
-        runtimeId = self.runtimeId(runtime)
+        runtimeId = runtime.runtimeId
         path = runtime.path()
         current = self._statuses.get(runtimeId)
 
@@ -61,7 +56,7 @@ class RuntimeStatusService(QObject):
 
         status = RuntimeStatus(runtimeId, runtime.name, path=path, isBusy=True)
         self._statuses[runtimeId] = status
-        self.statusChanged.emit(runtimeId, status)
+        self.statusChanged.emit(status)
 
         try:
             self._workIds[runtimeId] = coroutineRunner.submit(
@@ -80,13 +75,13 @@ class RuntimeStatusService(QObject):
         self._workIds.pop(runtimeId, None)
         status = RuntimeStatus(runtimeId, name, path=path, version=version)
         self._statuses[runtimeId] = status
-        self.statusChanged.emit(runtimeId, status)
+        self.statusChanged.emit(status)
 
     def _onProbeFailed(self, error: str, runtimeId: str, name: str, path: str) -> None:
         self._workIds.pop(runtimeId, None)
         status = RuntimeStatus(runtimeId, name, path=path, error=error)
         self._statuses[runtimeId] = status
-        self.statusChanged.emit(runtimeId, status)
+        self.statusChanged.emit(status)
 
 
 runtimeStatusService = RuntimeStatusService()
