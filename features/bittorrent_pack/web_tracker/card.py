@@ -64,7 +64,12 @@ class WebTrackerCard(SettingCard):
         )
         self._stateToolTip.move(self._stateToolTip.getSuitablePos())
         self._stateToolTip.show()
-        coroutineRunner.submit(trackerService.refresh(), done=self._onRefreshDone, failed=self._onRefreshFailed)
+
+        coroutineRunner.submit(
+            trackerService.refresh(),
+            done=self._onRefreshDone, failed=self._onRefreshFailed,
+            owner=self,
+        )
 
     def _onRefreshDone(self, result):
         self.refreshButton.setEnabled(True)

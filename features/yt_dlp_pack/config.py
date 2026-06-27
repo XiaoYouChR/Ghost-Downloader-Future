@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import platform
 import sys
 from pathlib import Path
@@ -18,22 +20,22 @@ RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
 class YtDlpConfig(PackConfig):
     installFolder = ConfigItem("YtDlp", "InstallFolder", f"{APP_DATA_DIR}/YtDlp", FolderValidator())
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import SelectFolderSettingCard, RuntimeCard
 
-        self.group = CollapsibleSettingCardGroup(self.tr("YouTube 下载"), "ytdlp", settingPage.container)
-        self.installFolderCard = SelectFolderSettingCard(
+        group = CollapsibleSettingCardGroup(self.tr("YouTube 下载"), "ytdlp", parent)
+        installFolderCard = SelectFolderSettingCard(
             ytDlpConfig.installFolder, f"{APP_DATA_DIR}/YtDlp",
             self.tr("yt-dlp 安装目录"),
-            self.group,
+            group,
         )
-        self.runtimeCard = RuntimeCard(ytDlpRuntime, self.group)
+        runtimeCard = RuntimeCard(ytDlpRuntime, group)
 
-        self.installFolderCard.pathChanged.connect(lambda _: self.runtimeCard.refreshStatus())
-        self.group.addSettingCards([self.installFolderCard, self.runtimeCard])
-        settingPage.addSettingGroup(self.group)
-        self.runtimeCard.refreshStatus()
+        installFolderCard.pathChanged.connect(runtimeCard._onInstallFolderChanged)
+        group.addSettingCards([installFolderCard, runtimeCard])
+        runtimeCard.refreshStatus()
+        return [group]
 
 
 ytDlpConfig = YtDlpConfig()

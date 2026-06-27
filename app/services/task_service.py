@@ -145,6 +145,9 @@ class TaskService(QObject):
     def taskById(self, taskId: str) -> Task | None:
         return self._store.taskById(taskId)
 
+    def runningCount(self) -> int:
+        return self._queue.runningCount()
+
     def add(self, task: Task) -> None:
         if task.taskId in self._store.tasks:
             return

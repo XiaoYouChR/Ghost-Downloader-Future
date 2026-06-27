@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from urllib.parse import urlsplit
+import weakref
 
 from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtWidgets import (
@@ -404,6 +405,8 @@ class RuntimeCard(SettingCard):
 
     def __init__(self, runtime, parent=None):
         from app.models.pack import BinaryRuntime
+        from app.services.runtime_status import runtimeStatusService
+
         self._runtime: BinaryRuntime = runtime
         super().__init__(FluentIcon.INFO, runtime.name, self.tr("正在检测运行时..."), parent)
 
@@ -413,6 +416,7 @@ class RuntimeCard(SettingCard):
         self._initWidget()
         self._initLayout()
         self._bind()
+        self.updateStatus(runtimeStatusService.status(runtime))
 
     def _initWidget(self) -> None:
         if not self._runtime.canInstall:
@@ -427,49 +431,63 @@ class RuntimeCard(SettingCard):
         self.hBoxLayout.addSpacing(16)
 
     def _bind(self) -> None:
+        from app.services.runtime_status import runtimeStatusService
+
+        runtimeStatusService.statusChanged.connect(self._onRuntimeStatusChanged)
         self.installButton.clicked.connect(self._onInstallClicked)
-        self.refreshButton.clicked.connect(self.refreshStatus)
+        self.refreshButton.clicked.connect(self._onRefreshClicked)
 
-    def refreshStatus(self) -> None:
-        from app.services.coroutine_runner import coroutineRunner
+    def refreshStatus(self, force: bool = False) -> None:
+        from app.services.runtime_status import runtimeStatusService
 
-        self.refreshButton.setEnabled(False)
-        self.setContent(self.tr("正在检测运行时..."))
-        coroutineRunner.submit(
-            self._runtime.probeVersion(),
-            done=self._onProbeFinished,
-            failed=self._onProbeFailed,
-        )
+        runtimeStatusService.refresh(self._runtime, force=force)
 
-    def _onProbeFinished(self, version: str) -> None:
-        self.refreshButton.setEnabled(True)
-        path = self._runtime.path()
-        if version and path:
-            self.setContent(self.tr("版本: {0}\n路径: {1}").format(version, path))
-        elif path:
-            self.setContent(self.tr("路径: {0}").format(path))
+    def updateStatus(self, status) -> None:
+        self.refreshButton.setEnabled(not status.isBusy)
+        if status.isBusy:
+            self.setContent(self.tr("正在检测运行时..."))
+        elif status.error:
+            self.setContent(self.tr("检测运行时失败"))
+        elif status.version and status.path:
+            self.setContent(self.tr("版本: {0}\n路径: {1}").format(status.version, status.path))
+        elif status.path:
+            self.setContent(self.tr("路径: {0}").format(status.path))
         else:
-            self.setContent(self.tr("未检测到可用的 {0}").format(self._runtime.name))
+            self.setContent(self.tr("未检测到可用的 {0}").format(status.name))
 
-    def _onProbeFailed(self, error: str) -> None:
-        self.refreshButton.setEnabled(True)
-        self.setContent(self.tr("检测运行时失败"))
+    def _onRefreshClicked(self, *_args) -> None:
+        self.refreshStatus(force=True)
+
+    def _onInstallFolderChanged(self, *_args) -> None:
+        self.refreshStatus()
+
+    def _onRuntimeStatusChanged(self, status) -> None:
+        if status.runtimeId == self._runtime.runtimeId:
+            self.updateStatus(status)
 
     def _onInstallClicked(self) -> None:
         from app.services.coroutine_runner import coroutineRunner
 
         self.installButton.setEnabled(False)
-        coroutineRunner.submit(
-            self._runtime.installTask(),
-            done=self._onInstallTaskCreated,
-            failed=self._onInstallTaskFailed,
-        )
+        cardRef = weakref.ref(self)
 
-    def _onInstallTaskCreated(self, task) -> None:
-        from app.services.task_service import taskService
+        def onCreated(task) -> None:
+            from shiboken6 import isValid
+            from app.services.task_service import taskService
 
-        self.installButton.setEnabled(True)
-        taskService.add(task)
+            taskService.add(task)
+            card = cardRef()
+            if card is not None and isValid(card):
+                card.installButton.setEnabled(True)
+
+        def onFailed(error: str) -> None:
+            from shiboken6 import isValid
+
+            card = cardRef()
+            if card is not None and isValid(card):
+                card._onInstallTaskFailed(error)
+
+        coroutineRunner.submit(self._runtime.installTask(), done=onCreated, failed=onFailed)
 
     def _onInstallTaskFailed(self, error: str) -> None:
         self.installButton.setEnabled(True)

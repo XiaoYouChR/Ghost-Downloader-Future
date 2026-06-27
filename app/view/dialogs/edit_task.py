@@ -72,14 +72,20 @@ class LiveEditDialog(EditTaskDialog):
             done=self._onReparsed,
             failed=self._onReparseFailed,
             options=options,
+            owner=self,
         )
 
     def reject(self):
-        if self._pendingParseId:
-            from app.services.coroutine_runner import coroutineRunner
-            coroutineRunner.cancel(self._pendingParseId)
-            self._pendingParseId = ""
+        self._cancelPendingParse()
         super().reject()
+
+    def _cancelPendingParse(self, *_args) -> None:
+        if not self._pendingParseId:
+            return
+        from app.services.coroutine_runner import coroutineRunner
+
+        coroutineRunner.cancel(self._pendingParseId)
+        self._pendingParseId = ""
 
     def _setInteractive(self, enabled: bool) -> None:
         self.progressBar.setVisible(not enabled)

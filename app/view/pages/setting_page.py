@@ -55,6 +55,7 @@ class SettingPage(ScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setObjectName("SettingPage")
         self.enableTransparentBackground()
+        self.setProperty("isStackedTransparent", False)
 
     def _initCards(self) -> None:
         self.speedLimitationCard = SpinBoxSettingCard(
@@ -268,7 +269,8 @@ class SettingPage(ScrollArea):
         self.addSettingGroup(self.browserGroup)
         self.addSettingGroup(self.personalGroup)
         self.addSettingGroup(self.softwareGroup)
-        featureService.settingGroups(self)
+        for group in featureService.settingGroups(self.container):
+            self.addSettingGroup(group)
         self.addSettingGroup(self.aboutGroup)
 
     def _bind(self) -> None:
@@ -374,7 +376,11 @@ class SettingPage(ScrollArea):
 
         InfoBar.info(self.tr("检查更新"), self.tr("正在检查更新..."),
                      duration=1500, position=InfoBarPosition.BOTTOM_RIGHT, parent=self.window())
-        coroutineRunner.submit(fetchRelease(), done=self._onUpdateChecked, failed=self._onUpdateCheckFailed)
+        coroutineRunner.submit(
+            fetchRelease(),
+            done=self._onUpdateChecked, failed=self._onUpdateCheckFailed,
+            owner=self,
+        )
 
     def _onUpdateChecked(self, release) -> None:
         from app.config.constants import VERSION

@@ -51,7 +51,7 @@ class IconLabelBase:
         painter.drawPixmap(0, yOffset, pixmap)
 
     @classmethod
-    def clearCache(cls) -> None:
+    def clearCache(cls, *_) -> None:
         cls._iconCache.clear()
 
 

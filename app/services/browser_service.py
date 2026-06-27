@@ -191,7 +191,15 @@ class BrowserService(QObject):
     def _closeAll(self) -> None:
         for session in list(self._sessions.values()):
             session.socket.close()
+            self._deleteSocket(session.socket)
         self._sessions.clear()
+
+    def _deleteSocket(self, socket: QWebSocket) -> None:
+        try:
+            socket.disconnected.disconnect(self._onDisconnected)
+        except (RuntimeError, TypeError):
+            pass
+        socket.deleteLater()
 
     def _send(self, session: BrowserClientSession, payload: dict) -> None:
         try:
@@ -227,8 +235,10 @@ class BrowserService(QObject):
     @Slot()
     def _onDisconnected(self) -> None:
         socket: QWebSocket = self.sender()
-        if socket:
-            self._sessions.pop(id(socket), None)
+        if not socket:
+            return
+        self._sessions.pop(id(socket), None)
+        self._deleteSocket(socket)
 
     @Slot()
     def _broadcastSnapshots(self) -> None:

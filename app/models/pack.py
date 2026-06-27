@@ -11,6 +11,7 @@ from app.config.cfg import cfg, ConfigItem
 if TYPE_CHECKING:
     from app.models.task import Task, TaskOptions
     from PySide6.QtWidgets import QWidget
+    from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
 
 @dataclass(frozen=True)
@@ -39,8 +40,8 @@ class PackConfig:
                 setattr(cfg.__class__, f"pack_{cls.__name__}_{attrName}", attrValue)
         cfg.load()
 
-    def setupSettings(self, settingPage) -> None:
-        pass
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
+        return []
 
     def isFileAssociationEnabled(self) -> bool:
         return True
@@ -55,6 +56,11 @@ class PackConfig:
 class BinaryRuntime:
     name: str = ""
     canInstall: bool = False
+
+    @property
+    def runtimeId(self) -> str:
+        cls = type(self)
+        return f"{cls.__module__}.{cls.__qualname__}"
 
     def path(self) -> str:
         raise NotImplementedError

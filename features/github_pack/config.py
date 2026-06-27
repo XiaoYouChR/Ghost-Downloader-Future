@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from urllib.parse import urlparse
 
 from app.client import buildClient
@@ -170,7 +172,12 @@ class GitHubProxySiteCard(SettingCard):
         self._refreshLatencyLabels()
         self.refreshButton.setEnabled(False)
         from app.services.coroutine_runner import coroutineRunner
-        coroutineRunner.submit(probeProxyLatencies(), done=self._onLatenciesDone, failed=self._onLatenciesFailed)
+
+        coroutineRunner.submit(
+            probeProxyLatencies(),
+            done=self._onLatenciesDone, failed=self._onLatenciesFailed,
+            owner=self,
+        )
 
     def _onLatenciesDone(self, latencies: dict[str, int]):
         self._isRefreshing = False
@@ -188,20 +195,20 @@ class GitHubConfig(PackConfig):
     selectedSite = ConfigItem("GitHub", "SelectedSite", GITHUB_PROXY_SITES[0], GitHubProxySiteValidator())
     customSite = ConfigItem("GitHub", "CustomSite", "", GitHubProxySiteValidator())
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         from qfluentwidgets import FluentIcon, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
-        self.githubGroup = CollapsibleSettingCardGroup(self.tr("GitHub 加速"), "github", settingPage.container)
-        self.enableCard = SwitchSettingCard(
+        githubGroup = CollapsibleSettingCardGroup(self.tr("GitHub 加速"), "github", parent)
+        enableCard = SwitchSettingCard(
             FluentIcon.LINK, self.tr("启用 GitHub 加速"),
             self.tr("命中 GitHub 文件链接时，自动改写为所选反向代理站"),
-            self.enabled, self.githubGroup,
+            self.enabled, githubGroup,
         )
-        self.proxySiteCard = GitHubProxySiteCard(self.githubGroup)
+        proxySiteCard = GitHubProxySiteCard(githubGroup)
 
-        self.githubGroup.addSettingCards([self.enableCard, self.proxySiteCard])
-        settingPage.addSettingGroup(self.githubGroup)
+        githubGroup.addSettingCards([enableCard, proxySiteCard])
+        return [githubGroup]
 
 
 githubConfig = GitHubConfig()

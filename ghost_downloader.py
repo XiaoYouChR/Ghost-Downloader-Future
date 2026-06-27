@@ -28,6 +28,10 @@ def setupEnvironment():
         setupHiddenSubprocess()
 
     import app.assets.resources  # noqa: F401
+    from app.view.qfw_patch import patchFluentLabelThemeChanged
+    from app.view.components.labels import IconBodyLabel
+    patchFluentLabelThemeChanged()
+    qconfig.themeChanged.connect(IconBodyLabel.clearCache)
     qconfig.load(f"{APP_DATA_DIR}/UserConfig.json", cfg)
     logger.info("Ghost Downloader v{} launched", VERSION)
 
@@ -71,9 +75,16 @@ def startApp(application, isSilent=False):
     if not isSilent:
         splash.finish()
 
+    from app.platform.windows import emptyWorkingSet
+
+    def emptyWorkingSetIfIdle():
+        if window is None and taskService.runningCount() == 0:
+            emptyWorkingSet()
+
     def onWindowDestroyed():
         nonlocal window
         window = None
+        emptyWorkingSetIfIdle()
 
     window.destroyed.connect(onWindowDestroyed)
 
@@ -135,6 +146,10 @@ def startApp(application, isSilent=False):
 
     from app.services.plan import plan
     taskService.tasksAllCompleted.connect(plan.trigger)
+    taskService.tasksAllCompleted.connect(emptyWorkingSetIfIdle)
+
+    if isSilent:
+        emptyWorkingSetIfIdle()
 
     if cfg.shouldCheckUpdateAtStartup.value:
         from app.update import fetchRelease, isOutdated

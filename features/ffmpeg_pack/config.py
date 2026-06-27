@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import platform
 import sys
@@ -18,22 +20,22 @@ RELEASE_API = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest"
 class FFmpegConfig(PackConfig):
     installFolder = ConfigItem("FFmpeg", "InstallFolder", f"{APP_DATA_DIR}/FFmpeg")
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import RuntimeCard, SelectFolderSettingCard
 
-        self.ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", settingPage.container)
-        self.installFolderCard = SelectFolderSettingCard(
+        ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", parent)
+        installFolderCard = SelectFolderSettingCard(
             ffmpegConfig.installFolder, f"{APP_DATA_DIR}/FFmpeg",
             self.tr("FFmpeg 安装目录"),
-            self.ffmpegGroup,
+            ffmpegGroup,
         )
-        self.runtimeCard = RuntimeCard(ffmpegRuntime, self.ffmpegGroup)
+        runtimeCard = RuntimeCard(ffmpegRuntime, ffmpegGroup)
 
-        self.installFolderCard.pathChanged.connect(lambda _: self.runtimeCard.refreshStatus())
-        self.ffmpegGroup.addSettingCards([self.installFolderCard, self.runtimeCard])
-        settingPage.addSettingGroup(self.ffmpegGroup)
-        self.runtimeCard.refreshStatus()
+        installFolderCard.pathChanged.connect(runtimeCard._onInstallFolderChanged)
+        ffmpegGroup.addSettingCards([installFolderCard, runtimeCard])
+        runtimeCard.refreshStatus()
+        return [ffmpegGroup]
 
 
 ffmpegConfig = FFmpegConfig()

@@ -87,7 +87,11 @@ class CatalogPage(PackPage, ScrollArea):
     def _loadCatalog(self):
         from app.services.coroutine_runner import coroutineRunner
         self._loadingWidget.setLoading()
-        coroutineRunner.submit(fetchCatalog(), done=self._onCatalogLoaded, failed=self._onCatalogFailed)
+        coroutineRunner.submit(
+            fetchCatalog(),
+            done=self._onCatalogLoaded, failed=self._onCatalogFailed,
+            owner=self,
+        )
 
     def _onCatalogLoaded(self, items: list[dict]):
         for card in self._cards:
@@ -259,6 +263,7 @@ class CatalogDownloadDialog(MessageBoxBase):
         item = self._items[index]
         options = self._optionGroup.options()
         window = self.window()
+        failedTitle = self.tr("下载失败")
 
         def onParsed(task):
             for step in task.steps:
@@ -266,7 +271,7 @@ class CatalogDownloadDialog(MessageBoxBase):
             taskService.add(task)
 
         def onFailed(error):
-            InfoBar.error(self.tr("下载失败"), str(error), duration=-1,
+            InfoBar.error(failedTitle, str(error), duration=-1,
                           position=InfoBarPosition.BOTTOM_RIGHT, parent=window)
 
         coroutineRunner.submit(
@@ -276,6 +281,7 @@ class CatalogDownloadDialog(MessageBoxBase):
             )),
             done=onParsed,
             failed=onFailed,
+            owner=window,
         )
         self.accept()
 
