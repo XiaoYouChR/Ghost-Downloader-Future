@@ -57,53 +57,53 @@ class BitTorrentConfig(PackConfig):
         from app.view.components.setting_cards import SpinBoxSettingCard
         from .web_tracker.card import WebTrackerCard
 
-        self.btGroup = CollapsibleSettingCardGroup(self.tr("BitTorrent 下载"), "bittorrent", settingPage.container)
+        btGroup = CollapsibleSettingCardGroup(self.tr("BitTorrent 下载"), "bittorrent", settingPage.container)
 
         cards = []
         if sys.platform != "darwin":
             cards.append(SwitchSettingCard(
                 FluentIcon.LINK, self.tr("关联 .torrent 文件"),
                 self.tr("把 .torrent 文件的打开方式设为 Ghost Downloader"),
-                self.associateFileTypes, self.btGroup,
+                self.associateFileTypes, btGroup,
             ))
         cards += [
             SpinBoxSettingCard(FluentIcon.GLOBE, self.tr("监听端口"),
-                self.tr("0 表示交给系统自动分配可用端口"), "", self.listenPort, self.btGroup, 1),
+                self.tr("0 表示交给系统自动分配可用端口"), "", self.listenPort, btGroup, 1),
             SpinBoxSettingCard(FluentIcon.HISTORY, self.tr("元数据超时"),
-                self.tr("解析 magnet 链接时等待元数据的最长时间"), " s", self.metadataTimeout, self.btGroup, 5),
+                self.tr("解析 magnet 链接时等待元数据的最长时间"), " s", self.metadataTimeout, btGroup, 5),
             RangeSettingCard(self.maxConnections, FluentIcon.PEOPLE, self.tr("连接数上限"),
-                self.tr("单个 BT 任务对应 session 的最大连接数"), self.btGroup),
+                self.tr("单个 BT 任务对应 session 的最大连接数"), btGroup),
             SpinBoxSettingCard(FluentIcon.SHARE, self.tr("上传限速"),
                 self.tr("0 表示不限速，单位为 session 级别的 KB/s"), " KB/s",
-                self.maxUploadSpeed, self.btGroup, 64, 1 / 1024),
+                self.maxUploadSpeed, btGroup, 64, 1 / 1024),
             SpinBoxSettingCard(FluentIcon.SHARE, self.tr("自动暂停做种分享率"),
                 self.tr("0 表示不按分享率自动暂停，100% 表示分享率 1.0"), " %",
-                self.seedingRatioLimit, self.btGroup, 50),
+                self.seedingRatioLimit, btGroup, 50),
             SpinBoxSettingCard(FluentIcon.STOP_WATCH, self.tr("自动暂停做种时长"),
                 self.tr("0 表示不按做种时长自动暂停"), " min",
-                self.seedingTimeLimit, self.btGroup, 10),
+                self.seedingTimeLimit, btGroup, 10),
             ComboBoxSettingCard(self.storageMode, FluentIcon.SAVE, self.tr("文件分配模式"),
                 self.tr("稀疏分配更省磁盘写入，预分配更容易提前暴露空间不足"),
-                texts=[self.tr("稀疏分配"), self.tr("预分配")], parent=self.btGroup),
+                texts=[self.tr("稀疏分配"), self.tr("预分配")], parent=btGroup),
             SwitchSettingCard(FluentIcon.SAVE, self.tr("保存 Magnet 种子文件"),
-                self.tr("下载 magnet 链接时额外保存 .torrent 文件"), self.saveMagnetFile, self.btGroup),
+                self.tr("下载 magnet 链接时额外保存 .torrent 文件"), self.saveMagnetFile, btGroup),
             SwitchSettingCard(FluentIcon.LIBRARY, self.tr("顺序下载"),
                 self.tr("按文件顺序下载，适合边下边看但通常会影响整体效率"),
-                self.enableSequentialDownload, self.btGroup),
+                self.enableSequentialDownload, btGroup),
             SwitchSettingCard(FluentIcon.GLOBE, self.tr("启用 DHT"),
-                self.tr("允许通过 DHT 网络发现 peers"), self.enableDht, self.btGroup),
+                self.tr("允许通过 DHT 网络发现 peers"), self.enableDht, btGroup),
             SwitchSettingCard(FluentIcon.HOME, self.tr("启用 LSD"),
-                self.tr("在局域网中广播并发现同一 torrent 的 peers"), self.enableLsd, self.btGroup),
+                self.tr("在局域网中广播并发现同一 torrent 的 peers"), self.enableLsd, btGroup),
             SwitchSettingCard(FluentIcon.LINK, self.tr("启用 Web Tracker"),
                 self.tr("把配置好的额外 Trackers 合并到新建 BT 任务中"),
-                self.enableWebTrackers, self.btGroup),
+                self.enableWebTrackers, btGroup),
             SwitchSettingCard(FluentIcon.SYNC, self.tr("新建任务时刷新 Web Tracker"),
                 self.tr("创建新的 BT 任务时先从源地址拉取最新 Tracker"),
-                self.autoRefreshWebTrackers, self.btGroup),
-            WebTrackerCard(self.btGroup),
+                self.autoRefreshWebTrackers, btGroup),
+            WebTrackerCard(btGroup),
         ]
-        self.btGroup.addSettingCards(cards)
-        settingPage.addSettingGroup(self.btGroup)
+        btGroup.addSettingCards(cards)
+        settingPage.addSettingGroup(btGroup)
 
 
 bittorrentConfig = BitTorrentConfig()

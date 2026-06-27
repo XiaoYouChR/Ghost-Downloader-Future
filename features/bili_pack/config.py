@@ -196,25 +196,25 @@ class BilibiliConfig(PackConfig):
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
-        self.biliGroup = CollapsibleSettingCardGroup(self.tr("哔哩哔哩视频下载"), "bili", settingPage.container)
-        self.biliGroup.addSettingCards([
+        biliGroup = CollapsibleSettingCardGroup(self.tr("哔哩哔哩视频下载"), "bili", settingPage.container)
+        biliGroup.addSettingCards([
             ComboBoxSettingCard(
                 self.defaultQuality, FluentIcon.VIDEO, self.tr("默认清晰度"),
                 self.tr("下载视频时默认的清晰度"),
                 ["8K", "4K", "1080P60", "1080P+", "1080P", "720P60", "720P", "480P", "360P"],
-                self.biliGroup,
+                biliGroup,
             ),
             ComboBoxSettingCard(
                 self.alternativeQuality, FluentIcon.VIDEO, self.tr("备选清晰度"),
                 self.tr("下载视频时备选的清晰度"),
                 [self.tr("可以下载的最高画质"), self.tr("可以下载的最低画质")],
-                self.biliGroup,
+                biliGroup,
             ),
             SwitchSettingCard(FluentIcon.VIDEO, self.tr("HDR"),
-                self.tr("下载 HDR 视频"), self.shouldIncludeHdr, self.biliGroup),
+                self.tr("下载 HDR 视频"), self.shouldIncludeHdr, biliGroup),
             SwitchSettingCard(FluentIcon.VIDEO, self.tr("杜比视界"),
-                self.tr("下载杜比视界视频"), self.shouldIncludeDolby, self.biliGroup),
-            BilibiliLoginSettingCard(self.biliGroup),
+                self.tr("下载杜比视界视频"), self.shouldIncludeDolby, biliGroup),
+            BilibiliLoginSettingCard(biliGroup),
         ])
-        settingPage.addSettingGroup(self.biliGroup)
+        settingPage.addSettingGroup(biliGroup)
 bilibiliConfig = BilibiliConfig()

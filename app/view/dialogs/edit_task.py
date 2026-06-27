@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import weakref
 from typing import TYPE_CHECKING
 
 from qfluentwidgets import (
@@ -51,6 +52,7 @@ class LiveEditDialog(EditTaskDialog):
     def __init__(self, task: Task, parent=None):
         super().__init__(task, parent)
         self._pendingParseId: str = ""
+        self.destroyed.connect(self._cancelPendingParse)
 
     def accept(self):
         from app.models.task import TaskOptions
@@ -68,19 +70,46 @@ class LiveEditDialog(EditTaskDialog):
 
         self._setInteractive(False)
         taskOptions = TaskOptions.fromOptions({**options, "url": newUrl})
+        dialogRef = weakref.ref(self)
+        workIdRef = {"value": ""}
+
+        def onReparsed(newTask: Task, options: dict) -> None:
+            from shiboken6 import isValid
+
+            dialog = dialogRef()
+            if dialog is None or not isValid(dialog) or dialog._pendingParseId != workIdRef["value"]:
+                return
+            dialog._pendingParseId = ""
+            dialog._onReparsed(newTask, options)
+
+        def onReparseFailed(error: str, **_) -> None:
+            from shiboken6 import isValid
+
+            dialog = dialogRef()
+            if dialog is None or not isValid(dialog) or dialog._pendingParseId != workIdRef["value"]:
+                return
+            dialog._pendingParseId = ""
+            dialog._onReparseFailed(error)
+
         self._pendingParseId = coroutineRunner.submit(
             featureService.parse(taskOptions),
-            done=self._onReparsed,
-            failed=self._onReparseFailed,
+            done=onReparsed,
+            failed=onReparseFailed,
             options=options,
         )
+        workIdRef["value"] = self._pendingParseId
 
     def reject(self):
-        if self._pendingParseId:
-            from app.services.coroutine_runner import coroutineRunner
-            coroutineRunner.cancel(self._pendingParseId)
-            self._pendingParseId = ""
+        self._cancelPendingParse()
         super().reject()
+
+    def _cancelPendingParse(self, *_args) -> None:
+        if not self._pendingParseId:
+            return
+        from app.services.coroutine_runner import coroutineRunner
+
+        coroutineRunner.cancel(self._pendingParseId)
+        self._pendingParseId = ""
 
     def _setInteractive(self, enabled: bool) -> None:
         self.progressBar.setVisible(not enabled)

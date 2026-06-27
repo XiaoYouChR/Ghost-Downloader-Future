@@ -12,7 +12,6 @@ from app.config.cfg import cfg
 from app.platform.android import isStorageGranted, requestStoragePermission
 from app.services.task_draft import TaskDraft
 from app.services.task_service import taskService
-from app.view.components.labels import IconBodyLabel
 from app.view.dialogs.task_draft import TaskDraftDialog
 from app.view.mobile.device import setupAccentColor
 from app.view.mobile.navigation import BottomNavigationBar
@@ -72,7 +71,6 @@ class MobileMainWindow(QWidget):
         cfg.customThemeMode.valueChanged.connect(self._onThemeModeChanged)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
         qconfig.themeChanged.connect(self.update)
-        qconfig.themeChanged.connect(lambda *_: IconBodyLabel.clearCache())
 
     def _addPage(self, page: QWidget, icon: FluentIcon, text: str):
         self.stackedWidget.addWidget(page)

@@ -73,9 +73,10 @@ class TaskCommandBarView(CommandBarView):
         self.setGraphicsEffect(shadow)
 
         self.moveCategoryAction.setVisible(cfg.isCategoryEnabled.value)
-        cfg.isCategoryEnabled.valueChanged.connect(
-            lambda v: self.moveCategoryAction.setVisible(bool(v))
-        )
+        cfg.isCategoryEnabled.valueChanged.connect(self._onCategoryEnabledChanged)
+
+    def _onCategoryEnabledChanged(self, value) -> None:
+        self.moveCategoryAction.setVisible(bool(value))
 
 
 class EmptyStatusWidget(QWidget):

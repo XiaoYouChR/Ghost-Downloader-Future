@@ -22,18 +22,18 @@ class YtDlpConfig(PackConfig):
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import SelectFolderSettingCard, RuntimeCard
 
-        self.group = CollapsibleSettingCardGroup(self.tr("YouTube 下载"), "ytdlp", settingPage.container)
-        self.installFolderCard = SelectFolderSettingCard(
+        group = CollapsibleSettingCardGroup(self.tr("YouTube 下载"), "ytdlp", settingPage.container)
+        installFolderCard = SelectFolderSettingCard(
             ytDlpConfig.installFolder, f"{APP_DATA_DIR}/YtDlp",
             self.tr("yt-dlp 安装目录"),
-            self.group,
+            group,
         )
-        self.runtimeCard = RuntimeCard(ytDlpRuntime, self.group)
+        runtimeCard = RuntimeCard(ytDlpRuntime, group)
 
-        self.installFolderCard.pathChanged.connect(lambda _: self.runtimeCard.refreshStatus())
-        self.group.addSettingCards([self.installFolderCard, self.runtimeCard])
-        settingPage.addSettingGroup(self.group)
-        self.runtimeCard.refreshStatus()
+        installFolderCard.pathChanged.connect(runtimeCard.refreshStatus)
+        group.addSettingCards([installFolderCard, runtimeCard])
+        settingPage.addSettingGroup(group)
+        runtimeCard.refreshStatus()
 
 
 ytDlpConfig = YtDlpConfig()

@@ -28,6 +28,8 @@ def setupEnvironment():
         setupHiddenSubprocess()
 
     import app.assets.resources  # noqa: F401
+    from app.view.components.labels import patchFluentLabelThemeChanged
+    patchFluentLabelThemeChanged()
     qconfig.load(f"{APP_DATA_DIR}/UserConfig.json", cfg)
     logger.info("Ghost Downloader v{} launched", VERSION)
 
@@ -64,6 +66,15 @@ def startApp(application, isSilent=False):
     def onWindowDestroyed():
         nonlocal window
         window = None
+        if sys.platform == "win32":
+            from PySide6.QtCore import QTimer
+            from app.platform.windows import trimProcessWorkingSet
+
+            def trimIfBackground():
+                if window is None:
+                    trimProcessWorkingSet()
+
+            QTimer.singleShot(1500, trimIfBackground)
 
     def show() -> MainWindow:
         nonlocal window

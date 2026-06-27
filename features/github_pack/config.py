@@ -1,3 +1,4 @@
+import weakref
 from urllib.parse import urlparse
 
 from app.client import buildClient
@@ -83,6 +84,7 @@ class GitHubProxySiteCard(SettingCard):
         )
         self._latencies: dict[str, int | None] = {s: None for s in GITHUB_PROXY_SITES}
         self._isRefreshing = False
+        self._latencyWorkId = ""
         self.comboBox = ComboBox(self)
         self.customSiteEdit = LineEdit(self)
         self.refreshButton = ToolButton(FluentIcon.SYNC, self)
@@ -125,6 +127,7 @@ class GitHubProxySiteCard(SettingCard):
         self.comboBox.currentIndexChanged.connect(self._onCurrentIndexChanged)
         self.customSiteEdit.editingFinished.connect(self._onCustomSiteEditingFinished)
         self.refreshButton.clicked.connect(self.refreshLatencies)
+        self.destroyed.connect(self._cancelLatencyProbe)
 
     def _refreshLatencyLabels(self):
         for i, site in enumerate(GITHUB_PROXY_SITES):
@@ -170,7 +173,44 @@ class GitHubProxySiteCard(SettingCard):
         self._refreshLatencyLabels()
         self.refreshButton.setEnabled(False)
         from app.services.coroutine_runner import coroutineRunner
-        coroutineRunner.submit(probeProxyLatencies(), done=self._onLatenciesDone, failed=self._onLatenciesFailed)
+
+        cardRef = weakref.ref(self)
+        workIdRef = {"value": ""}
+
+        def onLatenciesDone(latencies: dict[str, int]) -> None:
+            from shiboken6 import isValid
+
+            card = cardRef()
+            if card is None or not isValid(card) or card._latencyWorkId != workIdRef["value"]:
+                return
+            card._latencyWorkId = ""
+            card._onLatenciesDone(latencies)
+
+        def onLatenciesFailed(error) -> None:
+            from shiboken6 import isValid
+
+            card = cardRef()
+            if card is None or not isValid(card) or card._latencyWorkId != workIdRef["value"]:
+                return
+            card._latencyWorkId = ""
+            card._onLatenciesFailed(error)
+
+        self._latencyWorkId = coroutineRunner.submit(
+            probeProxyLatencies(), done=onLatenciesDone, failed=onLatenciesFailed,
+        )
+        workIdRef["value"] = self._latencyWorkId
+
+    def _cancelLatencyProbe(self, *_args) -> None:
+        self.cancelPendingWork()
+
+    def cancelPendingWork(self) -> None:
+        if not self._latencyWorkId:
+            return
+        from app.services.coroutine_runner import coroutineRunner
+
+        coroutineRunner.cancel(self._latencyWorkId)
+        self._latencyWorkId = ""
+        self._isRefreshing = False
 
     def _onLatenciesDone(self, latencies: dict[str, int]):
         self._isRefreshing = False
@@ -192,16 +232,16 @@ class GitHubConfig(PackConfig):
         from qfluentwidgets import FluentIcon, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
-        self.githubGroup = CollapsibleSettingCardGroup(self.tr("GitHub 加速"), "github", settingPage.container)
-        self.enableCard = SwitchSettingCard(
+        githubGroup = CollapsibleSettingCardGroup(self.tr("GitHub 加速"), "github", settingPage.container)
+        enableCard = SwitchSettingCard(
             FluentIcon.LINK, self.tr("启用 GitHub 加速"),
             self.tr("命中 GitHub 文件链接时，自动改写为所选反向代理站"),
-            self.enabled, self.githubGroup,
+            self.enabled, githubGroup,
         )
-        self.proxySiteCard = GitHubProxySiteCard(self.githubGroup)
+        proxySiteCard = GitHubProxySiteCard(githubGroup)
 
-        self.githubGroup.addSettingCards([self.enableCard, self.proxySiteCard])
-        settingPage.addSettingGroup(self.githubGroup)
+        githubGroup.addSettingCards([enableCard, proxySiteCard])
+        settingPage.addSettingGroup(githubGroup)
 
 
 githubConfig = GitHubConfig()

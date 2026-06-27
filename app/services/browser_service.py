@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from secrets import token_urlsafe
@@ -27,6 +27,7 @@ class BrowserClientSession:
     authenticated: bool = False
     subscribedTasks: bool = False
     lastSnapshot: str | None = None
+    parseWorkIds: dict[str, str] = field(default_factory=dict)
 
 
 class MessageType(StrEnum):
@@ -188,8 +189,34 @@ class BrowserService(QObject):
 
     def _closeAll(self) -> None:
         for session in list(self._sessions.values()):
+            self._cancelSessionParses(session)
             session.socket.close()
+            self._deleteSocket(session.socket)
         self._sessions.clear()
+
+    def _cancelSessionParses(self, session: BrowserClientSession) -> None:
+        if not session.parseWorkIds:
+            return
+        from app.services.coroutine_runner import coroutineRunner
+
+        for workId in session.parseWorkIds.values():
+            coroutineRunner.cancel(workId)
+        session.parseWorkIds.clear()
+
+    def _deleteSocket(self, socket: QWebSocket) -> None:
+        try:
+            socket.textMessageReceived.disconnect(self._onMessage)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            socket.disconnected.disconnect(self._onDisconnected)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            socket.setParent(None)
+        except RuntimeError:
+            pass
+        socket.deleteLater()
 
     def _send(self, session: BrowserClientSession, payload: dict) -> None:
         try:
@@ -225,8 +252,13 @@ class BrowserService(QObject):
     @Slot()
     def _onDisconnected(self) -> None:
         socket: QWebSocket = self.sender()
-        if socket:
-            self._sessions.pop(id(socket), None)
+        if not socket:
+            return
+        session = self._sessions.pop(id(socket), None)
+        if session is not None:
+            self._cancelSessionParses(session)
+            session.lastSnapshot = None
+        self._deleteSocket(socket)
 
     @Slot()
     def _broadcastSnapshots(self) -> None:
@@ -345,14 +377,22 @@ class BrowserService(QObject):
             self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=False, message=repr(e))
             return
 
-        coroutineRunner.submit(
+        oldWorkId = session.parseWorkIds.pop(requestId, None)
+        if oldWorkId:
+            coroutineRunner.cancel(oldWorkId)
+
+        workId = coroutineRunner.submit(
             featureService.parse(options),
             done=self._onTaskParsed,
             failed=self._onTaskParseFailed,
             session=session, requestId=requestId, title=title,
         )
+        session.parseWorkIds[requestId] = workId
 
     def _onTaskParsed(self, task: Task, session: BrowserClientSession, requestId: str, title: str) -> None:
+        if session.parseWorkIds.pop(requestId, None) is None:
+            return
+
         if title:
             task.setName(title)
 
@@ -365,6 +405,8 @@ class BrowserService(QObject):
         self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=True, taskId=task.taskId)
 
     def _onTaskParseFailed(self, error: str, session: BrowserClientSession, requestId: str, **_) -> None:
+        if session.parseWorkIds.pop(requestId, None) is None:
+            return
         self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=False, message=error)
 
     def _onTaskAction(self, session: BrowserClientSession, data: dict) -> None:

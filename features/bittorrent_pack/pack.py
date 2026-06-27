@@ -131,8 +131,6 @@ class BitTorrentPack(FeaturePack):
     def start(self):
         from app.services.coroutine_runner import coroutineRunner
         from app.services.task_service import taskService
-        if bittorrentConfig.enableWebTrackers.value and bittorrentConfig.autoRefreshWebTrackers.value:
-            coroutineRunner.submit(trackerService.refresh())
         coroutineRunner.submit(btSession.resumeAllSeeding(taskService.tasks))
 
     def stop(self):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import weakref
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Property, QPropertyAnimation, QEasingCurve, Signal, Qt
@@ -9,6 +10,48 @@ from qfluentwidgets import BodyLabel, StrongBodyLabel, ToolTipFilter, isDarkThem
 
 if TYPE_CHECKING:
     from qfluentwidgets import FluentIconBase
+
+
+def patchFluentLabelThemeChanged() -> None:
+    from qfluentwidgets.components.widgets import label as fluentLabelModule
+    from shiboken6 import isValid
+
+    FluentLabelBase = fluentLabelModule.FluentLabelBase
+    if getattr(FluentLabelBase, "_gdThemeChangedPatched", False):
+        return
+
+    def _init(self):
+        fluentLabelModule.FluentStyleSheet.LABEL.apply(self)
+        self.setFont(self.getFont())
+        self.setTextColor()
+
+        labelRef = weakref.ref(self)
+
+        def updateTextColor(*_args) -> None:
+            label = labelRef()
+            if label is not None and isValid(label):
+                label.setTextColor(label.lightColor, label.darkColor)
+
+        def disconnectThemeChanged(*_args) -> None:
+            try:
+                fluentLabelModule.qconfig.themeChanged.disconnect(updateTextColor)
+            except (RuntimeError, TypeError):
+                pass
+
+        fluentLabelModule.qconfig.themeChanged.connect(updateTextColor)
+        self.destroyed.connect(disconnectThemeChanged)
+        self.customContextMenuRequested.connect(self._onContextMenuRequested)
+        return self
+
+    FluentLabelBase._init = _init
+    FluentLabelBase._gdThemeChangedPatched = True
+
+    if not getattr(FluentLabelBase, "_gdIconCacheClearBound", False):
+        def clearIconCache(*_args) -> None:
+            IconBodyLabel.clearCache()
+
+        fluentLabelModule.qconfig.themeChanged.connect(clearIconCache)
+        FluentLabelBase._gdIconCacheClearBound = True
 
 
 class ElidedLabel(QLabel):
@@ -151,3 +194,6 @@ class EditableLabel(StrongBodyLabel):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor(255, 255, 255) if isDarkTheme() else QColor(0, 0, 0), 1))
         painter.drawLine(rect.left(), y, rect.left() + int(textWidth * self._underlineProgress), y)
+
+
+patchFluentLabelThemeChanged()
