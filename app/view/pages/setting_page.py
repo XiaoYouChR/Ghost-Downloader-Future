@@ -262,13 +262,12 @@ class SettingPage(ScrollArea):
         ])
 
     def _initLayout(self) -> None:
-        from app.services.feature_service import featureService
-
         self.addSettingGroup(self.generalGroup)
         self.addSettingGroup(self.categoryGroup)
         self.addSettingGroup(self.browserGroup)
         self.addSettingGroup(self.personalGroup)
         self.addSettingGroup(self.softwareGroup)
+        from app.services.feature_service import featureService
         for group in featureService.settingGroups(self.container):
             self.addSettingGroup(group)
         self.addSettingGroup(self.aboutGroup)

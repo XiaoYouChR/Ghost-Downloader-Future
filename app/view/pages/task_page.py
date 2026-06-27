@@ -330,10 +330,14 @@ class TaskPage(QWidget):
                 card.setChecked(not card.isChecked())
 
     def setSelectionMode(self, enter: bool) -> None:
+        if self._selectionMode == enter:
+            return
         self._selectionMode = enter
         self._selectionAnchor = None
         for card in self._cards.values():
             card.setSelectionMode(enter)
+            if not enter:
+                card.setChecked(False)
         self.commandView.setVisible(enter)
         if enter:
             self.commandView.raise_()
@@ -348,17 +352,25 @@ class TaskPage(QWidget):
                 currentIdx = self._displayOrder.index(taskId)
             except ValueError:
                 return
+            for tid in self._displayOrder:
+                card = self._cards.get(tid)
+                if card:
+                    card.setChecked(False)
             for i in range(min(anchorIdx, currentIdx), max(anchorIdx, currentIdx) + 1):
                 card = self._cards.get(self._displayOrder[i])
                 if card:
                     card.setChecked(True)
-            return
+        else:
+            card = self._cards.get(taskId)
+            if card:
+                card.setChecked(checked)
+            if checked:
+                self._selectionAnchor = taskId
+            elif taskId == self._selectionAnchor:
+                self._selectionAnchor = None
 
-        card = self._cards.get(taskId)
-        if card:
-            card.setChecked(checked)
-        if checked:
-            self._selectionAnchor = taskId
+        if not any(c.isChecked() for c in self._cards.values()):
+            self.setSelectionMode(False)
 
     @property
     def isSelectionMode(self) -> bool:
@@ -430,6 +442,7 @@ class TaskPage(QWidget):
             card = self._cards.get(taskId)
             if card and card.isChecked():
                 taskService.redownload(card.task)
+        self.setSelectionMode(False)
 
     def _onDeleteSelected(self) -> None:
         from qfluentwidgets import CheckBox, MessageBox
@@ -451,6 +464,7 @@ class TaskPage(QWidget):
         def moveTo(categoryId):
             for task in targets:
                 taskService.setCategory(task, categoryId)
+            self.setSelectionMode(False)
             self._rebuildList()
 
         popup = RoundMenu(parent=self)
@@ -474,6 +488,7 @@ class TaskPage(QWidget):
             task = taskService.taskById(taskId)
             if task:
                 taskService.delete(task, shouldDeleteFiles)
+        self.setSelectionMode(False)
 
     # ── list management ──
 

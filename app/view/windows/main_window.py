@@ -33,6 +33,7 @@ class MainWindow(MSFluentWindow):
         self._isBackgroundEffectDirty = False
         super().__init__(parent)
         self.setMicaEffectEnabled(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self._pages: dict[str, QWidget] = {}
 
@@ -48,10 +49,9 @@ class MainWindow(MSFluentWindow):
         self.setMinimumSize(960, 540)
         if sys.platform == "darwin":
             self.titleBar.hBoxLayout.insertSpacing(0, 60)
+        self._refreshThemeColor()
 
     def _initLayout(self) -> None:
-        from app.services.feature_service import featureService
-
         self._addPage(TaskPage, FluentIcon.DOWNLOAD, self.tr("下载任务"),
                       NavigationItemPosition.TOP)
         self.navigationInterface.addItem(
@@ -62,12 +62,15 @@ class MainWindow(MSFluentWindow):
             onClick=lambda: self.addUrls([]),
             position=NavigationItemPosition.TOP,
         )
-        for PageClass in featureService.pages():
-            self._addPage(PageClass, PageClass.icon, PageClass.title,
-                          NavigationItemPosition.TOP)
         self._addPage(SettingPage, FluentIcon.SETTING, self.tr("设置"),
                       NavigationItemPosition.BOTTOM)
         self._showPage(TaskPage)
+
+    def setupPacks(self) -> None:
+        from app.services.feature_service import featureService
+        for PageClass in featureService.pages():
+            self._addPage(PageClass, PageClass.icon, PageClass.title,
+                          NavigationItemPosition.TOP)
 
     def systemTitleBarRect(self, size) -> QRect:
         return QRect(0, 10, 75, size.height())
@@ -224,6 +227,8 @@ class MainWindow(MSFluentWindow):
         logButton.installEventFilter(ToolTipFilter(logButton))
         logButton.clicked.connect(self._openLogFolder)
 
+        dialog.contentLabel.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
         titleLayout = dialog.textLayout
         titleLayout.removeWidget(dialog.titleLabel)
         titleRow = QHBoxLayout()
@@ -248,7 +253,7 @@ class MainWindow(MSFluentWindow):
             return
         if not self.isMaximized():
             cfg.set(cfg.geometry, self.geometry())
-        self._draft.clear()
+        self._draftDialog.reject()
         from app.view.qfw_patch import unregisterRouter
         unregisterRouter(self.stackedWidget)
         event.accept()
@@ -306,6 +311,8 @@ class MainWindow(MSFluentWindow):
     def _setTheme(self, value, isUserTriggered=False) -> None:
         from qfluentwidgets import setTheme
         setTheme(value if isinstance(value, Theme) else Theme.AUTO, save=False)
+        from app.view.components.labels import IconBodyLabel
+        IconBodyLabel.clearCache()
         if (
             not isUserTriggered
             and sys.platform == "win32"
@@ -317,10 +324,15 @@ class MainWindow(MSFluentWindow):
         if sys.platform == "win32":
             self._refreshBackgroundEffect()
 
-    def _onSystemColorSchemeChanged(self, scheme) -> None:
+    def _onSystemColorSchemeChanged(self, colorScheme) -> None:
         if cfg.customThemeMode.value != Theme.AUTO:
             return
-        self._setTheme(Theme.AUTO)
+        if colorScheme == Qt.ColorScheme.Dark:
+            self._setTheme(Theme.DARK)
+        elif colorScheme == Qt.ColorScheme.Light:
+            self._setTheme(Theme.LIGHT)
+        else:
+            self._setTheme(Theme.AUTO)
 
     def _refreshBackgroundEffect(self) -> None:
         if sys.platform == "win32":
@@ -331,7 +343,7 @@ class MainWindow(MSFluentWindow):
             return
         from qfluentwidgets import isDarkTheme
         self.windowEffect.removeBackgroundEffect(self.winId())
-        isDark = isDarkTheme()
+        isDark = isDarkTheme() if cfg.customThemeMode.value == Theme.AUTO else cfg.customThemeMode.value == Theme.DARK
 
         if value == "Acrylic":
             self.setStyleSheet("background-color: transparent")
@@ -345,8 +357,18 @@ class MainWindow(MSFluentWindow):
         elif value == "Aero":
             self.setStyleSheet("background-color: transparent")
             self.windowEffect.setAeroEffect(self.winId())
+            from app.platform.windows import isLessThanWin10
+            if isLessThanWin10():
+                self.titleBar.closeBtn.hide()
+                self.titleBar.minBtn.hide()
+                self.titleBar.maxBtn.hide()
         elif value == "None":
             self.setStyleSheet("")
+            from app.platform.windows import isLessThanWin10
+            if isLessThanWin10():
+                self.titleBar.closeBtn.show()
+                self.titleBar.minBtn.show()
+                self.titleBar.maxBtn.show()
 
 
 if sys.platform == "win32":

@@ -50,6 +50,7 @@ class TorrentParser(TaskParser):
 
         elif urlparse(url).scheme.lower() == "magnet":
             from .metadata import fetchTorrentBytes
+            magnetTrackers = list(lt.parse_magnet_uri(url).trackers)
             torrentBytes = await fetchTorrentBytes(url, webTrackers)
             sourceType, sourceUrl = "magnet", url
 
@@ -69,7 +70,8 @@ class TorrentParser(TaskParser):
 
         ti = lt.torrent_info(torrentBytes)
         torrentTrackers = [str(t.url).strip() for t in ti.trackers()]
-        trackers = list(dict.fromkeys(t for g in (torrentTrackers, webTrackers) for t in g if t))
+        allSources = (magnetTrackers, torrentTrackers, webTrackers) if sourceType == "magnet" else (torrentTrackers, webTrackers)
+        trackers = list(dict.fromkeys(t for g in allSources for t in g if t))
 
         fileStorage = ti.files()
         entries: list[BTFile] = [

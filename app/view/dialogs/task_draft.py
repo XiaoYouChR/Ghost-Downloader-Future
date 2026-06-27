@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtGui import QColor, QTextOption
 from PySide6.QtWidgets import QDialog, QFileDialog, QHBoxLayout, QVBoxLayout
 from qframelesswindow import FramelessDialog
@@ -66,7 +66,9 @@ class TaskDraftDialog(MessageBoxBase):
         self._draft = draft
         self._parseTimer = QTimer(self, singleShot=True)
         self._standaloneWrapper = StandaloneWrapper(self)
+        self.destroyed.connect(self._standaloneWrapper.deleteLater)
         self._isStandalone = False
+        self._dragPos = QPoint()
         self._cardByUrl: dict[str, object] = {}
 
         self.titleLabel = SubtitleLabel(self.tr("添加任务"), self)
@@ -190,8 +192,31 @@ class TaskDraftDialog(MessageBoxBase):
         self._onParseNeeded()
         return self._draft.canConfirm()
 
+    def eventFilter(self, obj, event: QEvent):
+        if obj is not self.windowMask:
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._dragPos = event.pos()
+            return True
+
+        if event.type() == QEvent.Type.MouseMove and not self._dragPos.isNull():
+            window = self.window()
+            if window.isMaximized():
+                window.showNormal()
+            position = window.pos() + event.pos() - self._dragPos
+            position.setX(max(0, position.x()))
+            position.setY(max(0, position.y()))
+            window.move(position)
+            return True
+
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            self._dragPos = QPoint()
+
+        return super().eventFilter(obj, event)
+
     def _toStandalone(self) -> None:
-        self.hBoxLayout.removeWidget(self.widget)
+        self._hBoxLayout.removeWidget(self.widget)
         self._standaloneWrapper.setContent(self.widget)
         self.widget.setStyleSheet("#centerWidget { border: none; border-radius: 0; }")
         self.widget.show()
@@ -201,7 +226,7 @@ class TaskDraftDialog(MessageBoxBase):
         self._standaloneWrapper.hide()
         self._standaloneWrapper.takeContent(self.widget)
         self.widget.setStyleSheet("")
-        self.hBoxLayout.addWidget(self.widget, 1, Qt.AlignmentFlag.AlignCenter)
+        self._hBoxLayout.addWidget(self.widget, 1, Qt.AlignmentFlag.AlignCenter)
         self.widget.show()
         self._isStandalone = False
 

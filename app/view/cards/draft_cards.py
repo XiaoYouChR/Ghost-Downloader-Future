@@ -42,8 +42,9 @@ class DraftCard(QWidget):
         self._bind()
 
     def _initWidget(self) -> None:
+        from PySide6.QtWidgets import QSizePolicy
         self.setFixedHeight(35)
-        self.nameLabel.setMinimumWidth(0)
+        self.nameLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.nameEdit.setText(self._task.name)
         self.nameEdit.hide()
         self.categoryButton.setFixedSize(28, 28)

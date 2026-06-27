@@ -48,8 +48,6 @@ class FileSelectDialog(MessageBoxBase):
     def _fileDisplayPath(self, file) -> str:
         return file.relativePath
 
-    # ── init ──
-
     def _initWidget(self) -> None:
         self.widget.setMinimumWidth(720)
         self.yesButton.setText(self.tr("应用"))
@@ -83,8 +81,6 @@ class FileSelectDialog(MessageBoxBase):
         self.selectAllButton.clicked.connect(lambda: self._setAll(True))
         self.clearButton.clicked.connect(lambda: self._setAll(False))
         self.invertButton.clicked.connect(self._invertSelection)
-
-    # ── tree ──
 
     def _buildTree(self) -> None:
         folderItems: dict[tuple[str, ...], QStandardItem] = {}
@@ -164,8 +160,6 @@ class FileSelectDialog(MessageBoxBase):
         self.selectByTypeButton.setMenu(self.selectByTypeMenu)
         self.selectByTypeButton.setEnabled(bool(self.selectByTypeMenu.actions()))
 
-    # ── check state ──
-
     def _onItemChanged(self, item: QStandardItem) -> None:
         if item.column() != 0:
             return
@@ -205,8 +199,6 @@ class FileSelectDialog(MessageBoxBase):
                 item.setCheckState(Qt.CheckState.PartiallyChecked)
             item = item.parent()
 
-    # ── batch operations ──
-
     def _setSelectedIndexes(self, selectedIndexes: set[int]) -> None:
         with QSignalBlocker(self.treeModel):
             for file in self._task.files or []:
@@ -237,8 +229,6 @@ class FileSelectDialog(MessageBoxBase):
         })
         self.treeView.viewport().update()
 
-    # ── summary ──
-
     def _updateSummary(self) -> None:
         selected = self.selectedIndexes()
         total = len(self._fileItems)
@@ -246,8 +236,6 @@ class FileSelectDialog(MessageBoxBase):
         self.summaryLabel.setText(
             self.tr("已选择 {0}/{1} 个文件，共 {2}").format(len(selected), total, toReadableSize(size))
         )
-
-    # ── public ──
 
     def selectedIndexes(self) -> set[int]:
         return {idx for idx, item in self._fileItems.items() if item.checkState() == Qt.CheckState.Checked}

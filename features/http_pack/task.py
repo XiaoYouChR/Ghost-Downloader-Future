@@ -341,6 +341,7 @@ class HttpTaskStep(TaskStep):
 
         finalOutput = Path(self.task.outputPath)
         if str(finalOutput) != self.outputPath:
+            finalOutput.parent.mkdir(parents=True, exist_ok=True)
             finalOutput.touch(exist_ok=True)
 
         emulation = toEmulation(self.clientProfile or cfg.clientProfile.value, "")

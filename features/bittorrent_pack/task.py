@@ -183,24 +183,29 @@ class BTTask(Task):
     async def run(self):
         from .session import btSession
 
-        if self.countSelected <= 0:
-            raise RuntimeError("至少需要选择一个文件")
+        try:
+            if self.countSelected <= 0:
+                raise RuntimeError("至少需要选择一个文件")
 
-        target = Path(self.outputPath)
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.touch() if self.isSingleFile else target.mkdir()
+            target = Path(self.outputPath)
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.touch() if self.isSingleFile else target.mkdir()
 
-        if self.sourceType == "magnet" and bittorrentConfig.saveMagnetFile.value:
-            try:
-                self.magnetTorrentPath.write_bytes(b64decode(self.torrentData))
-            except Exception as e:
-                logger.opt(exception=e).warning("保存 magnet 种子文件失败 {}", self.name)
+            if self.sourceType == "magnet" and bittorrentConfig.saveMagnetFile.value:
+                try:
+                    self.magnetTorrentPath.write_bytes(b64decode(self.torrentData))
+                except Exception as e:
+                    logger.opt(exception=e).warning("保存 magnet 种子文件失败 {}", self.name)
 
-        btSession.open()
+            btSession.open()
 
-        session = btSession.session()
-        handle = self._addTorrent(session)
+            session = btSession.session()
+            handle = self._addTorrent(session)
+        except Exception as e:
+            self.step.setError(e)
+            raise
+
         handle.resume()
         handle.force_reannounce(0, -1, lt.reannounce_flags_t.ignore_min_interval)
         if bittorrentConfig.enableDht.value:

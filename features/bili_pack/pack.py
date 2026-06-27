@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import urllib.parse
 from urllib.parse import parse_qs, urlparse
 
 from app.client import buildClient, toEmulation
@@ -10,7 +11,7 @@ from app.models.task import TaskOptions
 from app.platform.filesystem import toSafeFilename
 from .account import bilibiliAccount
 from .config import bilibiliConfig
-from .task import BilibiliAudioStep, BilibiliMergeStep, BilibiliTask, BilibiliVideoStep
+from .task import BilibiliTask
 
 
 class BilibiliParser(TaskParser):
@@ -25,24 +26,30 @@ class BilibiliParser(TaskParser):
         subworkerCount = options.subworkerCount
         outputFolder = options.outputFolder
 
+        await bilibiliAccount.fetchWbiKeys()
+
         parsed = urlparse(url)
         referer = parsed._replace(netloc="www.bilibili.com").geturl() if (
             (parsed.hostname or "").lower() != "bilibili.com"
         ) else url
 
-        headers = {
+        apiHeaders = {}
+        cookie = bilibiliAccount.cookie
+        if cookie:
+            apiHeaders["cookie"] = cookie
+
+        downloadHeaders = {
             **dict(options.headers),
             "referer": referer,
         }
-        cookie = bilibiliAccount.cookie
         if cookie:
-            headers["cookie"] = cookie
+            downloadHeaders["cookie"] = cookie
 
         emulation = toEmulation(
             options.clientProfile or cfg.clientProfile.value,
             options.sourceUserAgent,
         )
-        client = buildClient(emulation=emulation, headers=headers)
+        client = buildClient(emulation=None, headers=apiHeaders)
 
         try:
             videoIdMatch = re.match(r"/video/(BV[a-zA-Z0-9]+|av\d+)", parsed.path)
@@ -90,21 +97,7 @@ class BilibiliParser(TaskParser):
             videoTitle = str(viewData.get("title", "")).strip() or "bilibili_video"
             requestedQuality = bilibiliConfig.defaultQuality.value
             baseName = toSafeFilename(videoTitle, fallback="bilibili_video")
-
-            def buildSuffix(pageNumber: int, pagePart: str) -> str:
-                if len(selectedPages) <= 1:
-                    return ""
-                suffix = f" - P{pageNumber}"
-                if pagePart and pagePart != baseName:
-                    suffix += f" {pagePart}"
-                return suffix
-
-            if len(selectedPages) == 1:
-                page = pages[selectedPages[0] - 1]
-                suffix = buildSuffix(selectedPages[0], str(page.get("part", "")).strip())
-                taskName = f"{baseName}{suffix}.mp4"
-            else:
-                taskName = f"{baseName}.mp4"
+            taskName = f"{baseName}.mp4"
 
             fnval = 16
             if bilibiliConfig.shouldIncludeHdr.value:
@@ -117,18 +110,20 @@ class BilibiliParser(TaskParser):
                 fnval |= 128
 
             totalSize = 0
-            resolvedPages = []
+            parsedPages = []
 
-            for pageNumber in selectedPages:
+            for pageNumber in range(1, len(pages) + 1):
                 page = pages[pageNumber - 1]
                 pagePart = str(page.get("part", "")).strip()
                 cid = int(page["cid"])
 
-                playApiUrl = (
-                    f"https://api.bilibili.com/x/player/wbi/playurl?avid={videoId[2:]}&cid={cid}&qn={requestedQuality}&fnval={fnval}&fourk=1"
-                    if videoId.startswith("av")
-                    else f"https://api.bilibili.com/x/player/wbi/playurl?bvid={videoId}&cid={cid}&qn={requestedQuality}&fnval={fnval}&fourk=1"
-                )
+                playParams = {"cid": cid, "qn": requestedQuality, "fnval": fnval, "fourk": 1}
+                if videoId.startswith("av"):
+                    playParams["avid"] = videoId[2:]
+                else:
+                    playParams["bvid"] = videoId
+                playParams = bilibiliAccount.signParams(playParams)
+                playApiUrl = f"https://api.bilibili.com/x/player/wbi/playurl?{urllib.parse.urlencode(playParams)}"
 
                 response = await client.get(playApiUrl)
                 response.raise_for_status()
@@ -148,11 +143,11 @@ class BilibiliParser(TaskParser):
                 if not videoUrl or not audioUrl:
                     raise ValueError("未能解析出完整的音视频下载链接")
 
-                videoSize = await self._fetchSize(client, videoUrl, headers)
-                audioSize = await self._fetchSize(client, audioUrl, headers)
+                videoSize = await self._fetchSize(client, videoUrl, downloadHeaders)
+                audioSize = await self._fetchSize(client, audioUrl, downloadHeaders)
                 totalSize += videoSize + audioSize
 
-                resolvedPages.append({
+                parsedPages.append({
                     "pageNumber": pageNumber,
                     "pagePart": pagePart,
                     "videoUrl": videoUrl,
@@ -161,44 +156,36 @@ class BilibiliParser(TaskParser):
                     "audioSize": audioSize,
                 })
 
+            coverUrl = str(viewData.get("pic") or "").strip()
+            if coverUrl.startswith("http://"):
+                coverUrl = "https://" + coverUrl[7:]
+
+            coverSize = 0
+            if coverUrl:
+                try:
+                    headResponse = await client.head(coverUrl)
+                    cl = headResponse.headers.get("content-length")
+                    if cl:
+                        coverSize = int(cl.decode() if isinstance(cl, bytes) else cl)
+                except Exception:
+                    pass
+
+            for info in parsedPages:
+                info["headers"] = dict(downloadHeaders)
+                info["subworkerCount"] = subworkerCount
+                info["selected"] = info["pageNumber"] in selectedPages
+
             task = BilibiliTask(
                 name=taskName,
                 url=url,
                 fileSize=totalSize,
                 outputFolder=outputFolder,
+                coverUrl=coverUrl,
+                coverSize=coverSize,
+                pages=parsedPages,
+                _baseName=baseName,
             )
-
-            for index, info in enumerate(resolvedPages):
-                suffix = buildSuffix(info["pageNumber"], info["pagePart"])
-                stepBase = index * 3
-
-                task.addStep(BilibiliVideoStep(
-                    stepIndex=stepBase + 1,
-                    url=info["videoUrl"],
-                    fileSize=info["videoSize"],
-                    headers=dict(headers),
-
-                    subworkerCount=subworkerCount,
-                    canUseRangeRequests=True,
-                    pageIndex=index,
-                    pageSuffix=suffix,
-                ))
-                task.addStep(BilibiliAudioStep(
-                    stepIndex=stepBase + 2,
-                    url=info["audioUrl"],
-                    fileSize=info["audioSize"],
-                    headers=dict(headers),
-
-                    subworkerCount=subworkerCount,
-                    canUseRangeRequests=True,
-                    pageIndex=index,
-                    pageSuffix=suffix,
-                ))
-                task.addStep(BilibiliMergeStep(
-                    stepIndex=stepBase + 3,
-                    pageIndex=index,
-                    pageSuffix=suffix,
-                ))
+            task._rebuildSteps()
 
             return task
         finally:
@@ -225,11 +212,11 @@ class BilibiliParser(TaskParser):
             return ""
 
         if quality is not None and acceptQuality:
-            resolved = quality
-            if resolved not in acceptQuality:
-                resolved = max(acceptQuality) if bilibiliConfig.alternativeQuality.value == "max" else min(acceptQuality)
+            targetQuality = quality
+            if targetQuality not in acceptQuality:
+                targetQuality = max(acceptQuality) if bilibiliConfig.alternativeQuality.value == "max" else min(acceptQuality)
             for s in streams:
-                if s.get("id") == resolved and streamUrl(s):
+                if s.get("id") == targetQuality and streamUrl(s):
                     return streamUrl(s)
 
         for s in streams:
@@ -259,6 +246,10 @@ class BilibiliPack(FeaturePack):
 
     def parsers(self):
         return [BilibiliParser()]
+
+    def draftCard(self, task, parent=None):
+        from .cards import BilibiliDraftCard
+        return BilibiliDraftCard(task, parent)
 
     def optionCards(self, task, parent=None):
         from app.view.components.option_cards import OutputFolderCard

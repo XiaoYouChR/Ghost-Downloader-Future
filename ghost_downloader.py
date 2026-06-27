@@ -65,8 +65,11 @@ def startApp(application, isSilent=False):
         splash = SplashScreen(window.windowIcon(), window, enableShadow=False)
         splash.raise_()
         window.show()
+        application.processEvents()
 
     featureService.load()
+    window.setupPacks()
+
     taskService.taskStarted.connect(lambda _: speedMeter.start())
     taskService.tasksAllCompleted.connect(speedMeter.stop)
     taskService.resumeSaved()
@@ -92,6 +95,7 @@ def startApp(application, isSilent=False):
         nonlocal window
         if window is None:
             window = MainWindow()
+            window.setupPacks()
             window.destroyed.connect(onWindowDestroyed)
         window.show()
         from app.platform.desktop import raiseWindow
@@ -102,6 +106,7 @@ def startApp(application, isSilent=False):
         nonlocal window
         if window is None:
             window = MainWindow()
+            window.setupPacks()
             window.destroyed.connect(onWindowDestroyed)
         window.addTasks(tasks)
 
