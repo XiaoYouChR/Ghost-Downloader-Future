@@ -26,8 +26,10 @@ def setupEnvironment():
     from app.config.constants import VERSION
     from app.platform.android import nativeLibraryDir
 
-    from app.view.components.labels import patchFluentLabelThemeChanged
+    from app.view.qfw_patch import patchFluentLabelThemeChanged
+    from app.view.components.labels import IconBodyLabel
     patchFluentLabelThemeChanged()
+    qconfig.themeChanged.connect(IconBodyLabel.clearCache)
     qconfig.load(f"{APP_DATA_DIR}/UserConfig.json", cfg)
     logger.info("Ghost Downloader v{} (Android) launched", VERSION)
 

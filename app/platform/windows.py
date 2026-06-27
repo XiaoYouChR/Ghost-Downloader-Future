@@ -21,7 +21,7 @@ def isGreaterEqualWin11() -> bool:
     return isGreaterEqualWin10() and sys.getwindowsversion().build >= 22000
 
 
-def trimProcessWorkingSet() -> bool:
+def emptyWorkingSet() -> bool:
     if sys.platform != "win32":
         return False
 

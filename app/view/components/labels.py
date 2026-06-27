@@ -11,36 +11,6 @@ if TYPE_CHECKING:
     from qfluentwidgets import FluentIconBase
 
 
-def patchFluentLabelThemeChanged() -> None:
-    from qfluentwidgets.components.widgets import label as fluentLabelModule
-
-    FluentLabelBase = fluentLabelModule.FluentLabelBase
-    if getattr(FluentLabelBase, "_gdThemeChangedPatched", False):
-        return
-
-    def _init(self):
-        fluentLabelModule.FluentStyleSheet.LABEL.apply(self)
-        self.setFont(self.getFont())
-        self.setTextColor()
-        fluentLabelModule.qconfig.themeChanged.connect(self._applyThemeColor)
-        self.customContextMenuRequested.connect(self._onContextMenuRequested)
-        return self
-
-    def _applyThemeColor(self, *_args) -> None:
-        self.setTextColor(self.lightColor, self.darkColor)
-
-    FluentLabelBase._init = _init
-    FluentLabelBase._applyThemeColor = _applyThemeColor
-    FluentLabelBase._gdThemeChangedPatched = True
-
-    if not getattr(FluentLabelBase, "_gdIconCacheClearBound", False):
-        def clearIconCache(*_args) -> None:
-            IconBodyLabel.clearCache()
-
-        fluentLabelModule.qconfig.themeChanged.connect(clearIconCache)
-        FluentLabelBase._gdIconCacheClearBound = True
-
-
 class ElidedLabel(QLabel):
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -81,7 +51,7 @@ class IconLabelBase:
         painter.drawPixmap(0, yOffset, pixmap)
 
     @classmethod
-    def clearCache(cls) -> None:
+    def clearCache(cls, *_) -> None:
         cls._iconCache.clear()
 
 
@@ -181,6 +151,3 @@ class EditableLabel(StrongBodyLabel):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor(255, 255, 255) if isDarkTheme() else QColor(0, 0, 0), 1))
         painter.drawLine(rect.left(), y, rect.left() + int(textWidth * self._underlineProgress), y)
-
-
-patchFluentLabelThemeChanged()

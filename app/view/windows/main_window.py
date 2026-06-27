@@ -263,19 +263,9 @@ class MainWindow(MSFluentWindow):
         if not self.isMaximized():
             cfg.set(cfg.geometry, self.geometry())
         self._draft.clear()
-        self._releaseNavigationHistory()
+        from app.view.qfw_patch import unregisterRouter
+        unregisterRouter(self.stackedWidget)
         event.accept()
-
-    def _releaseNavigationHistory(self) -> None:
-        from qfluentwidgets.common.router import qrouter
-
-        stackedWidget = self.stackedWidget
-        qrouter.history = [item for item in qrouter.history if item.stacked is not stackedWidget]
-        for registered in list(qrouter.stackHistories):
-            if registered is stackedWidget:
-                qrouter.stackHistories.pop(registered, None)
-                break
-        qrouter.emptyChanged.emit(not bool(qrouter.history))
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

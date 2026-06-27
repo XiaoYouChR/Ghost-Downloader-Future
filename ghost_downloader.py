@@ -28,8 +28,10 @@ def setupEnvironment():
         setupHiddenSubprocess()
 
     import app.assets.resources  # noqa: F401
-    from app.view.components.labels import patchFluentLabelThemeChanged
+    from app.view.qfw_patch import patchFluentLabelThemeChanged
+    from app.view.components.labels import IconBodyLabel
     patchFluentLabelThemeChanged()
+    qconfig.themeChanged.connect(IconBodyLabel.clearCache)
     qconfig.load(f"{APP_DATA_DIR}/UserConfig.json", cfg)
     logger.info("Ghost Downloader v{} launched", VERSION)
 
@@ -62,19 +64,16 @@ def startApp(application, isSilent=False):
     featureService.start()
 
     window = None
+    from app.platform.windows import emptyWorkingSet
+
+    def emptyWorkingSetIfIdle():
+        if window is None and taskService.runningCount() == 0:
+            emptyWorkingSet()
 
     def onWindowDestroyed():
         nonlocal window
         window = None
-        if sys.platform == "win32":
-            from PySide6.QtCore import QTimer
-            from app.platform.windows import trimProcessWorkingSet
-
-            def trimIfBackground():
-                if window is None:
-                    trimProcessWorkingSet()
-
-            QTimer.singleShot(1500, trimIfBackground)
+        emptyWorkingSetIfIdle()
 
     def show() -> MainWindow:
         nonlocal window
@@ -133,9 +132,12 @@ def startApp(application, isSilent=False):
 
     from app.services.plan import plan
     taskService.tasksAllCompleted.connect(plan.trigger)
+    taskService.tasksAllCompleted.connect(emptyWorkingSetIfIdle)
 
     if not isSilent:
         show()
+    else:
+        emptyWorkingSetIfIdle()
 
     if cfg.shouldCheckUpdateAtStartup.value:
         from app.update import fetchRelease, isOutdated
