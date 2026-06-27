@@ -25,8 +25,7 @@ def openFileSelection(task: BTTask, parent) -> set[int] | None:
 
 class TorrentFileSelectDialog(FileSelectDialog):
     def _fileDisplayPath(self, file) -> str:
-        task: BTTask = self._task
-        return task.toRelativePath(file)
+        return self._task.toRelativePath(file)
 
 
 class BTDraftCard(UniversalDraftCard):
