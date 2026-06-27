@@ -1,5 +1,3 @@
-import weakref
-
 from qfluentwidgets import (
     FluentIcon,
     PrimaryPushButton,
@@ -20,7 +18,6 @@ class WebTrackerCard(SettingCard):
         self.manageButton = PrimaryPushButton(self.tr("管理"), self)
         self.refreshButton = ToolButton(FluentIcon.SYNC, self)
         self._stateToolTip: StateToolTip | None = None
-        self._refreshWorkId = ""
 
         self._initWidget()
         self._initLayout()
@@ -60,7 +57,6 @@ class WebTrackerCard(SettingCard):
         urls = list(bittorrentConfig.webTrackerSources.value)
         if not urls:
             return
-        self._cancelRefresh()
         self.refreshButton.setEnabled(False)
         self._stateToolTip = StateToolTip(
             self.tr("正在刷新 Web Tracker"),
@@ -70,47 +66,17 @@ class WebTrackerCard(SettingCard):
         self._stateToolTip.move(self._stateToolTip.getSuitablePos())
         self._stateToolTip.show()
 
-        cardRef = weakref.ref(self)
-        workIdRef = {"value": ""}
-
-        def onRefreshDone(result):
-            from shiboken6 import isValid
-
-            card = cardRef()
-            if card is None or not isValid(card) or card._refreshWorkId != workIdRef["value"]:
-                return
-            card._refreshWorkId = ""
-            card._onRefreshDone(result)
-
-        def onRefreshFailed(error):
-            from shiboken6 import isValid
-
-            card = cardRef()
-            if card is None or not isValid(card) or card._refreshWorkId != workIdRef["value"]:
-                return
-            card._refreshWorkId = ""
-            card._onRefreshFailed(error)
-
-        self._refreshWorkId = coroutineRunner.submit(
-            trackerService.refresh(), done=onRefreshDone, failed=onRefreshFailed,
+        coroutineRunner.submit(
+            trackerService.refresh(),
+            done=self._onRefreshDone, failed=self._onRefreshFailed,
+            owner=self,
         )
-        workIdRef["value"] = self._refreshWorkId
 
     def _onDestroyed(self, *_args):
-        self.cancelPendingWork()
         if self._stateToolTip is not None:
             self._stateToolTip.close()
             self._stateToolTip.deleteLater()
             self._stateToolTip = None
-
-    def cancelPendingWork(self):
-        self._cancelRefresh()
-
-    def _cancelRefresh(self):
-        if not self._refreshWorkId:
-            return
-        coroutineRunner.cancel(self._refreshWorkId)
-        self._refreshWorkId = ""
 
     def _onRefreshDone(self, result):
         self.refreshButton.setEnabled(True)

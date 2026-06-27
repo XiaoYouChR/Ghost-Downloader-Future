@@ -39,8 +39,8 @@ class PackConfig:
                 setattr(cfg.__class__, f"pack_{cls.__name__}_{attrName}", attrValue)
         cfg.load()
 
-    def setupSettings(self, settingPage) -> None:
-        pass
+    def settingGroups(self, parent) -> list:
+        return []
 
     def isFileAssociationEnabled(self) -> bool:
         return True

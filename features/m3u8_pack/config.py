@@ -56,7 +56,7 @@ class M3U8Config(PackConfig):
     customMuxAfterDone = ConfigItem("M3U8", "CustomMuxAfterDone", "")
     shouldSelectAllAudioSubtitle = ConfigItem("M3U8", "SelectAllAudioSubtitle", True, BoolValidator())
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent) -> list:
         import sys
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, RangeSettingCard, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
@@ -64,7 +64,7 @@ class M3U8Config(PackConfig):
             SelectFolderSettingCard, LineEditSettingCard, RuntimeCard, SelectFileCard, SpinBoxSettingCard,
         )
 
-        m3u8Group = CollapsibleSettingCardGroup(self.tr("流媒体下载"), "m3u8", settingPage.container)
+        m3u8Group = CollapsibleSettingCardGroup(self.tr("流媒体下载"), "m3u8", parent)
         installFolderCard = SelectFolderSettingCard(
             self.installFolder, f"{APP_DATA_DIR}/M3U8DL",
             self.tr("N_m3u8DL-RE 安装目录"),
@@ -136,9 +136,9 @@ class M3U8Config(PackConfig):
                 self.customMuxAfterDone, m3u8Group, placeholder="format=mp4"),
         ]
         m3u8Group.addSettingCards(cards)
-        installFolderCard.pathChanged.connect(runtimeCard.refreshStatus)
-        settingPage.addSettingGroup(m3u8Group)
+        installFolderCard.pathChanged.connect(runtimeCard._onInstallFolderChanged)
         runtimeCard.refreshStatus()
+        return [m3u8Group]
 
 
 m3u8Config = M3U8Config()

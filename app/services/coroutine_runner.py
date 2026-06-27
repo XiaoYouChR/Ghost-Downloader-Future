@@ -4,8 +4,9 @@ import asyncio
 from typing import Callable
 from uuid import uuid4
 
-from PySide6.QtCore import QThread, QTimer
+from PySide6.QtCore import QObject, QThread, QTimer
 from PySide6.QtWidgets import QApplication
+from shiboken6 import isValid
 from loguru import logger
 
 
@@ -23,8 +24,19 @@ class CoroutineRunner(QThread):
         self._loop.run_forever()
         self._loop.close()
 
-    def submit(self, work, done: Callable = None, failed: Callable = None, *args, **kwargs) -> str:
+    def submit(
+        self,
+        work,
+        done: Callable = None,
+        failed: Callable = None,
+        *args,
+        owner: QObject = None,
+        **kwargs,
+    ) -> str:
         workId = f"wrk_{uuid4().hex}"
+        if owner is not None:
+            done, failed = self._guard(owner, done), self._guard(owner, failed)
+            owner.destroyed.connect(lambda *_: self.cancel(workId))
         self._pending[workId] = (done, failed, args, kwargs)
 
         async def execute():
@@ -71,10 +83,20 @@ class CoroutineRunner(QThread):
                 logger.opt(exception=e).error("callback failed")
 
         app = QApplication.instance()
-        if app:
+        if app is not None:
             QTimer.singleShot(0, app, wrapper)
         else:
             wrapper()
+
+    def _guard(self, owner: QObject, callback: Callable) -> Callable | None:
+        if callback is None:
+            return None
+
+        def guarded(*args, **kwargs):
+            if isValid(owner):
+                callback(*args, **kwargs)
+
+        return guarded
 
     def stop(self) -> None:
         for task in list(self._running.values()):

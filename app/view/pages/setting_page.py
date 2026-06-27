@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import weakref
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
@@ -30,7 +29,6 @@ class SettingPage(ScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._updateCheckWorkId = ""
         self.container = QWidget()
         self.vBoxLayout = QVBoxLayout(self.container)
         self.vBoxLayout.addStretch(1)
@@ -49,13 +47,6 @@ class SettingPage(ScrollArea):
 
     def addSettingGroup(self, group: CollapsibleSettingCardGroup) -> None:
         self.vBoxLayout.insertWidget(self.vBoxLayout.count() - 1, group)
-
-    def cancelPendingWork(self) -> None:
-        self._cancelUpdateCheck()
-        for child in self.findChildren(QWidget):
-            cancelPendingWork = getattr(child, "cancelPendingWork", None)
-            if callable(cancelPendingWork):
-                cancelPendingWork()
 
     def _initWidget(self) -> None:
         self.setWidget(self.container)
@@ -259,7 +250,8 @@ class SettingPage(ScrollArea):
         self.addSettingGroup(self.browserGroup)
         self.addSettingGroup(self.personalGroup)
         self.addSettingGroup(self.softwareGroup)
-        featureService.settingGroups(self)
+        for group in featureService.settingGroups(self.container):
+            self.addSettingGroup(group)
         self.addSettingGroup(self.aboutGroup)
 
     def _bind(self) -> None:
@@ -282,7 +274,6 @@ class SettingPage(ScrollArea):
         self.aboutCard.clicked.connect(self._onAboutCardClicked)
         self.feedbackCard.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
         self.openLogButton.clicked.connect(self._onOpenLogClicked)
-        self.destroyed.connect(self._cancelUpdateCheck)
 
     def _onDownloadFolderChanged(self, path: str) -> None:
         cfg.set(cfg.downloadFolder, path)
@@ -346,43 +337,13 @@ class SettingPage(ScrollArea):
         from app.services.coroutine_runner import coroutineRunner
         from app.update import fetchRelease
 
-        self._cancelUpdateCheck()
         InfoBar.info(self.tr("检查更新"), self.tr("正在检查更新..."),
                      duration=1500, position=InfoBarPosition.BOTTOM_RIGHT, parent=self.window())
-
-        pageRef = weakref.ref(self)
-        workIdRef = {"value": ""}
-
-        def onUpdateChecked(release) -> None:
-            from shiboken6 import isValid
-
-            page = pageRef()
-            if page is None or not isValid(page) or page._updateCheckWorkId != workIdRef["value"]:
-                return
-            page._updateCheckWorkId = ""
-            page._onUpdateChecked(release)
-
-        def onUpdateCheckFailed(error: str) -> None:
-            from shiboken6 import isValid
-
-            page = pageRef()
-            if page is None or not isValid(page) or page._updateCheckWorkId != workIdRef["value"]:
-                return
-            page._updateCheckWorkId = ""
-            page._onUpdateCheckFailed(error)
-
-        self._updateCheckWorkId = coroutineRunner.submit(
-            fetchRelease(), done=onUpdateChecked, failed=onUpdateCheckFailed,
+        coroutineRunner.submit(
+            fetchRelease(),
+            done=self._onUpdateChecked, failed=self._onUpdateCheckFailed,
+            owner=self,
         )
-        workIdRef["value"] = self._updateCheckWorkId
-
-    def _cancelUpdateCheck(self, *_args) -> None:
-        if not self._updateCheckWorkId:
-            return
-        from app.services.coroutine_runner import coroutineRunner
-
-        coroutineRunner.cancel(self._updateCheckWorkId)
-        self._updateCheckWorkId = ""
 
     def _onUpdateChecked(self, release) -> None:
         from app.config.constants import VERSION

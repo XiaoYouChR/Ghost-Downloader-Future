@@ -192,11 +192,11 @@ class BilibiliConfig(PackConfig):
     shouldIncludeHdr = ConfigItem("Bilibili", "ParseHDR", False, BoolValidator())
     shouldIncludeDolby = ConfigItem("Bilibili", "ParseDolby", False, BoolValidator())
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent) -> list:
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
-        biliGroup = CollapsibleSettingCardGroup(self.tr("哔哩哔哩视频下载"), "bili", settingPage.container)
+        biliGroup = CollapsibleSettingCardGroup(self.tr("哔哩哔哩视频下载"), "bili", parent)
         biliGroup.addSettingCards([
             ComboBoxSettingCard(
                 self.defaultQuality, FluentIcon.VIDEO, self.tr("默认清晰度"),
@@ -216,5 +216,5 @@ class BilibiliConfig(PackConfig):
                 self.tr("下载杜比视界视频"), self.shouldIncludeDolby, biliGroup),
             BilibiliLoginSettingCard(biliGroup),
         ])
-        settingPage.addSettingGroup(biliGroup)
+        return [biliGroup]
 bilibiliConfig = BilibiliConfig()

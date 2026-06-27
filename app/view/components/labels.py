@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import weakref
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Property, QPropertyAnimation, QEasingCurve, Signal, Qt
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
 def patchFluentLabelThemeChanged() -> None:
     from qfluentwidgets.components.widgets import label as fluentLabelModule
-    from shiboken6 import isValid
 
     FluentLabelBase = fluentLabelModule.FluentLabelBase
     if getattr(FluentLabelBase, "_gdThemeChangedPatched", False):
@@ -24,26 +22,15 @@ def patchFluentLabelThemeChanged() -> None:
         fluentLabelModule.FluentStyleSheet.LABEL.apply(self)
         self.setFont(self.getFont())
         self.setTextColor()
-
-        labelRef = weakref.ref(self)
-
-        def updateTextColor(*_args) -> None:
-            label = labelRef()
-            if label is not None and isValid(label):
-                label.setTextColor(label.lightColor, label.darkColor)
-
-        def disconnectThemeChanged(*_args) -> None:
-            try:
-                fluentLabelModule.qconfig.themeChanged.disconnect(updateTextColor)
-            except (RuntimeError, TypeError):
-                pass
-
-        fluentLabelModule.qconfig.themeChanged.connect(updateTextColor)
-        self.destroyed.connect(disconnectThemeChanged)
+        fluentLabelModule.qconfig.themeChanged.connect(self._applyThemeColor)
         self.customContextMenuRequested.connect(self._onContextMenuRequested)
         return self
 
+    def _applyThemeColor(self, *_args) -> None:
+        self.setTextColor(self.lightColor, self.darkColor)
+
     FluentLabelBase._init = _init
+    FluentLabelBase._applyThemeColor = _applyThemeColor
     FluentLabelBase._gdThemeChangedPatched = True
 
     if not getattr(FluentLabelBase, "_gdIconCacheClearBound", False):

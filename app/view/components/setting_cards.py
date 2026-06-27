@@ -409,7 +409,6 @@ class RuntimeCard(SettingCard):
 
         self._runtime: BinaryRuntime = runtime
         self._runtimeId = runtimeStatusService.runtimeId(runtime)
-        self._installWorkId = ""
         super().__init__(FluentIcon.INFO, runtime.name, self.tr("正在检测运行时..."), parent)
 
         self.installButton = PrimaryPushButton(self.tr("一键安装"), self)
@@ -436,14 +435,13 @@ class RuntimeCard(SettingCard):
         from app.services.runtime_status import runtimeStatusService
 
         runtimeStatusService.statusChanged.connect(self._onRuntimeStatusChanged)
-        self.destroyed.connect(self._onDestroyed)
         self.installButton.clicked.connect(self._onInstallClicked)
         self.refreshButton.clicked.connect(self._onRefreshClicked)
 
-    def refreshStatus(self, *_args, force: bool = False) -> None:
+    def refreshStatus(self, force: bool = False) -> None:
         from app.services.runtime_status import runtimeStatusService
 
-        runtimeStatusService.refresh(self._runtime, force=force or bool(_args))
+        runtimeStatusService.refresh(self._runtime, force=force)
         self.updateStatus(runtimeStatusService.status(self._runtime))
 
     def updateStatus(self, status) -> None:
@@ -462,57 +460,36 @@ class RuntimeCard(SettingCard):
     def _onRefreshClicked(self, *_args) -> None:
         self.refreshStatus(force=True)
 
+    def _onInstallFolderChanged(self, *_args) -> None:
+        self.refreshStatus()
+
     def _onRuntimeStatusChanged(self, runtimeId: str, status) -> None:
         if runtimeId == self._runtimeId:
             self.updateStatus(status)
-
-    def _onDestroyed(self, *_args) -> None:
-        from app.services.runtime_status import runtimeStatusService
-
-        try:
-            runtimeStatusService.statusChanged.disconnect(self._onRuntimeStatusChanged)
-        except (RuntimeError, TypeError):
-            pass
 
     def _onInstallClicked(self) -> None:
         from app.services.coroutine_runner import coroutineRunner
 
         self.installButton.setEnabled(False)
-        self._cancelInstall()
-
         cardRef = weakref.ref(self)
 
         def onCreated(task) -> None:
-            # install succeeds into the global task service regardless of view lifetime
+            from shiboken6 import isValid
             from app.services.task_service import taskService
+
             taskService.add(task)
             card = cardRef()
-            if card is not None:
-                from shiboken6 import isValid
-                if isValid(card):
-                    card._installWorkId = ""
-                    card.installButton.setEnabled(True)
+            if card is not None and isValid(card):
+                card.installButton.setEnabled(True)
 
         def onFailed(error: str) -> None:
             from shiboken6 import isValid
+
             card = cardRef()
             if card is not None and isValid(card):
-                card._installWorkId = ""
                 card._onInstallTaskFailed(error)
 
-        self._installWorkId = coroutineRunner.submit(
-            self._runtime.installTask(),
-            done=onCreated,
-            failed=onFailed,
-        )
-
-    def _cancelInstall(self, *_args) -> None:
-        if not self._installWorkId:
-            return
-        from app.services.coroutine_runner import coroutineRunner
-
-        coroutineRunner.cancel(self._installWorkId)
-        self._installWorkId = ""
+        coroutineRunner.submit(self._runtime.installTask(), done=onCreated, failed=onFailed)
 
     def _onInstallTaskFailed(self, error: str) -> None:
         self.installButton.setEnabled(True)

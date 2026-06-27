@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sys
-import weakref
 from base64 import b64decode
 from pathlib import Path
 
@@ -60,7 +59,6 @@ class CatalogPage(PackPage, ScrollArea):
         super().__init__(parent)
         self.setObjectName("CatalogPage")
         self._cards: list[CatalogCard] = []
-        self._catalogWorkId = ""
 
         self._scrollWidget = QWidget()
         self._layout = QVBoxLayout(self._scrollWidget)
@@ -85,49 +83,15 @@ class CatalogPage(PackPage, ScrollArea):
 
     def _bind(self):
         self._loadingWidget.retryRequested.connect(self._loadCatalog)
-        self.destroyed.connect(self._cancelCatalogLoad)
 
     def _loadCatalog(self):
         from app.services.coroutine_runner import coroutineRunner
-        self._cancelCatalogLoad()
         self._loadingWidget.setLoading()
-
-        pageRef = weakref.ref(self)
-        workIdRef = {"value": ""}
-
-        def onCatalogLoaded(items: list[dict]) -> None:
-            from shiboken6 import isValid
-
-            page = pageRef()
-            if page is None or not isValid(page) or page._catalogWorkId != workIdRef["value"]:
-                return
-            page._catalogWorkId = ""
-            page._onCatalogLoaded(items)
-
-        def onCatalogFailed(error: str) -> None:
-            from shiboken6 import isValid
-
-            page = pageRef()
-            if page is None or not isValid(page) or page._catalogWorkId != workIdRef["value"]:
-                return
-            page._catalogWorkId = ""
-            page._onCatalogFailed(error)
-
-        self._catalogWorkId = coroutineRunner.submit(
-            fetchCatalog(), done=onCatalogLoaded, failed=onCatalogFailed,
+        coroutineRunner.submit(
+            fetchCatalog(),
+            done=self._onCatalogLoaded, failed=self._onCatalogFailed,
+            owner=self,
         )
-        workIdRef["value"] = self._catalogWorkId
-
-    def _cancelCatalogLoad(self, *_args):
-        self.cancelPendingWork()
-
-    def cancelPendingWork(self):
-        if not self._catalogWorkId:
-            return
-        from app.services.coroutine_runner import coroutineRunner
-
-        coroutineRunner.cancel(self._catalogWorkId)
-        self._catalogWorkId = ""
 
     def _onCatalogLoaded(self, items: list[dict]):
         for card in self._cards:
@@ -299,7 +263,6 @@ class CatalogDownloadDialog(MessageBoxBase):
         item = self._items[index]
         options = self._optionGroup.options()
         window = self.window()
-        windowRef = weakref.ref(window)
         failedTitle = self.tr("下载失败")
 
         def onParsed(task):
@@ -308,13 +271,8 @@ class CatalogDownloadDialog(MessageBoxBase):
             taskService.add(task)
 
         def onFailed(error):
-            from shiboken6 import isValid
-
-            parent = windowRef()
-            if parent is None or not isValid(parent):
-                return
             InfoBar.error(failedTitle, str(error), duration=-1,
-                          position=InfoBarPosition.BOTTOM_RIGHT, parent=parent)
+                          position=InfoBarPosition.BOTTOM_RIGHT, parent=window)
 
         coroutineRunner.submit(
             featureService.parse(ResourceTaskOptions(
@@ -323,6 +281,7 @@ class CatalogDownloadDialog(MessageBoxBase):
             )),
             done=onParsed,
             failed=onFailed,
+            owner=window,
         )
         self.accept()
 

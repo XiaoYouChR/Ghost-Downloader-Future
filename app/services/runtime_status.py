@@ -63,12 +63,6 @@ class RuntimeStatusService(QObject):
         self._statuses[runtimeId] = status
         self.statusChanged.emit(runtimeId, status)
 
-        if getattr(coroutineRunner, "_loop", None) is None:
-            status = RuntimeStatus(runtimeId, runtime.name, path=path)
-            self._statuses[runtimeId] = status
-            self.statusChanged.emit(runtimeId, status)
-            return
-
         try:
             self._workIds[runtimeId] = coroutineRunner.submit(
                 runtime.probeVersion(),

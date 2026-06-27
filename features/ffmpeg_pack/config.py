@@ -18,11 +18,11 @@ RELEASE_API = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest"
 class FFmpegConfig(PackConfig):
     installFolder = ConfigItem("FFmpeg", "InstallFolder", f"{APP_DATA_DIR}/FFmpeg")
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent) -> list:
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import RuntimeCard, SelectFolderSettingCard
 
-        ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", settingPage.container)
+        ffmpegGroup = CollapsibleSettingCardGroup(self.tr("FFmpeg"), "ffmpeg", parent)
         installFolderCard = SelectFolderSettingCard(
             ffmpegConfig.installFolder, f"{APP_DATA_DIR}/FFmpeg",
             self.tr("FFmpeg 安装目录"),
@@ -30,10 +30,10 @@ class FFmpegConfig(PackConfig):
         )
         runtimeCard = RuntimeCard(ffmpegRuntime, ffmpegGroup)
 
-        installFolderCard.pathChanged.connect(runtimeCard.refreshStatus)
+        installFolderCard.pathChanged.connect(runtimeCard._onInstallFolderChanged)
         ffmpegGroup.addSettingCards([installFolderCard, runtimeCard])
-        settingPage.addSettingGroup(ffmpegGroup)
         runtimeCard.refreshStatus()
+        return [ffmpegGroup]
 
 
 ffmpegConfig = FFmpegConfig()

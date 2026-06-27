@@ -50,14 +50,14 @@ class BitTorrentConfig(PackConfig):
     )
     webTrackerCustomList = ConfigItem("BitTorrent", "WebTrackerCustomList", "")
 
-    def setupSettings(self, settingPage):
+    def settingGroups(self, parent) -> list:
         import sys
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, RangeSettingCard, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import SpinBoxSettingCard
         from .web_tracker.card import WebTrackerCard
 
-        btGroup = CollapsibleSettingCardGroup(self.tr("BitTorrent 下载"), "bittorrent", settingPage.container)
+        btGroup = CollapsibleSettingCardGroup(self.tr("BitTorrent 下载"), "bittorrent", parent)
 
         cards = []
         if sys.platform != "darwin":
@@ -103,7 +103,7 @@ class BitTorrentConfig(PackConfig):
             WebTrackerCard(btGroup),
         ]
         btGroup.addSettingCards(cards)
-        settingPage.addSettingGroup(btGroup)
+        return [btGroup]
 
 
 bittorrentConfig = BitTorrentConfig()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import weakref
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QRect, QUrl, QTimer, Qt
@@ -213,23 +212,17 @@ class MainWindow(MSFluentWindow):
             ReleaseInfoDialog(release, self).exec()
             return
 
-        windowRef = weakref.ref(self)
-
-        def onParseFailed(error: str) -> None:
-            from shiboken6 import isValid
-
-            window = windowRef()
-            if window is None or not isValid(window):
-                return
-            InfoBar.error(
-                window.tr("创建下载任务失败"), str(error),
-                duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=window,
-            )
-
         coroutineRunner.submit(
             featureService.parse(TaskOptions(url=asset.downloadUrl)),
-            done=lambda task: taskService.add(task),
-            failed=onParseFailed,
+            done=taskService.add,
+            failed=self._onUpdateAssetParseFailed,
+            owner=self,
+        )
+
+    def _onUpdateAssetParseFailed(self, error: str) -> None:
+        InfoBar.error(
+            self.tr("创建下载任务失败"), str(error),
+            duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=self,
         )
 
     def alertException(self, message: str) -> None:
@@ -270,17 +263,8 @@ class MainWindow(MSFluentWindow):
         if not self.isMaximized():
             cfg.set(cfg.geometry, self.geometry())
         self._draft.clear()
-        self._cancelPendingViewWork()
         self._releaseNavigationHistory()
         event.accept()
-
-    def _cancelPendingViewWork(self) -> None:
-        if self.settingPage is not None:
-            self.settingPage.cancelPendingWork()
-        for page in self._packPages.values():
-            cancelPendingWork = getattr(page, "cancelPendingWork", None)
-            if callable(cancelPendingWork):
-                cancelPendingWork()
 
     def _releaseNavigationHistory(self) -> None:
         from qfluentwidgets.common.router import qrouter

@@ -72,10 +72,12 @@ class FeatureService(QObject):
             result.extend(pack.pages())
         return result
 
-    def settingGroups(self, settingPage) -> None:
+    def settingGroups(self, parent) -> list:
+        result = []
         for pack in self._packs:
             if pack.config:
-                pack.config.setupSettings(settingPage)
+                result.extend(pack.config.settingGroups(parent))
+        return result
 
     def fileTypes(self) -> list[FileType]:
         types = []
