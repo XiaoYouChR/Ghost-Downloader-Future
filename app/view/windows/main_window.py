@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sys
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QRect, QUrl, QTimer, Qt
 from PySide6.QtGui import QColor, QIcon, QDesktopServices, QPalette
-from PySide6.QtWidgets import QApplication, QHBoxLayout
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget
 from qfluentwidgets import (
     MSFluentWindow, FluentIcon, NavigationItemPosition, MessageBox, Theme, InfoBar, InfoBarPosition,
     setThemeColor,
@@ -16,12 +17,13 @@ from app.config.constants import AUTHOR_URL, FEEDBACK_URL
 from app.services.task_draft import TaskDraft
 from app.services.task_service import taskService
 from app.signal_bus import signalBus
+from app.view.pages.setting_page import SettingPage
 from app.view.pages.task_page import TaskPage
 
 if TYPE_CHECKING:
+    from qfluentwidgets import FluentIconBase
     from app.models.task import Task
     from app.view.dialogs.task_draft import TaskDraftDialog
-    from app.view.pages.setting_page import SettingPage
 
 
 class MainWindow(MSFluentWindow):
@@ -33,14 +35,9 @@ class MainWindow(MSFluentWindow):
         self.setMicaEffectEnabled(False)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
-        self.taskPage = TaskPage(self)
-        self.settingPage: SettingPage | None = None
+        self._pages: dict[str, QWidget] = {}
 
         self._draft = TaskDraft(parent=self)
-        self._draft.taskConfirmed.connect(taskService.add)
-        self._draftDialog: TaskDraftDialog | None = None
-
-        self._packPages: dict[type, object] = {}
 
         self._initWidget()
         self._initLayout()
@@ -56,8 +53,8 @@ class MainWindow(MSFluentWindow):
     def _initLayout(self) -> None:
         from app.services.feature_service import featureService
 
-        self.addSubInterface(self.taskPage, FluentIcon.DOWNLOAD, self.tr("下载任务"),
-                             position=NavigationItemPosition.TOP)
+        self._addPage(TaskPage, FluentIcon.DOWNLOAD, self.tr("下载任务"),
+                      NavigationItemPosition.TOP)
         self.navigationInterface.addItem(
             routeKey="addTaskButton",
             text=self.tr("新建任务"),
@@ -67,20 +64,11 @@ class MainWindow(MSFluentWindow):
             position=NavigationItemPosition.TOP,
         )
         for PageClass in featureService.pages():
-            self.navigationInterface.addItem(
-                routeKey=PageClass.__name__,
-                text=PageClass.title,
-                icon=PageClass.icon,
-                onClick=lambda _, cls=PageClass: self._showPackPage(cls),
-                position=NavigationItemPosition.TOP,
-            )
-        self.navigationInterface.addItem(
-            routeKey="SettingPage",
-            text=self.tr("设置"),
-            icon=FluentIcon.SETTING,
-            onClick=self._showSettingPage,
-            position=NavigationItemPosition.BOTTOM,
-        )
+            self._addPage(PageClass, PageClass.icon, PageClass.title,
+                          NavigationItemPosition.TOP)
+        self._addPage(SettingPage, FluentIcon.SETTING, self.tr("设置"),
+                      NavigationItemPosition.BOTTOM)
+        self._showPage(TaskPage)
 
     def systemTitleBarRect(self, size) -> QRect:
         return QRect(0, 10, 75, size.height())
@@ -91,25 +79,25 @@ class MainWindow(MSFluentWindow):
             return self._darkBackgroundColor if isDarkTheme() else self._lightBackgroundColor
         return QColor(0, 0, 0, 0)
 
-    def _showPackPage(self, pageClass: type) -> None:
-        page = self._packPages.get(pageClass)
+    def _addPage(self, pageClass: type[QWidget], icon: FluentIconBase, text: str,
+                 position: NavigationItemPosition) -> None:
+        self.navigationInterface.addItem(
+            routeKey=pageClass.__name__, icon=icon, text=text,
+            onClick=lambda: self._showPage(pageClass), position=position,
+        )
+
+    def _showPage(self, pageClass: type[QWidget]) -> None:
+        routeKey = pageClass.__name__
+        page = self._pages.get(routeKey)
         if page is None:
             page = pageClass(self)
-            self.addSubInterface(page, pageClass.icon, pageClass.title,
-                                 position=NavigationItemPosition.TOP)
-            self._packPages[pageClass] = page
+            page.setObjectName(routeKey)
+            self.stackedWidget.addWidget(page)
+            self._pages[routeKey] = page
         self.switchTo(page)
 
-    def _showSettingPage(self) -> None:
-        if self.settingPage is None:
-            from app.view.pages.setting_page import SettingPage
-
-            self.settingPage = SettingPage(self)
-            self.settingPage.setProperty("isStackedTransparent", False)
-            self.stackedWidget.addWidget(self.settingPage)
-        self.switchTo(self.settingPage)
-
     def _bind(self) -> None:
+        self._draft.taskConfirmed.connect(taskService.add)
         cfg.customThemeMode.valueChanged.connect(self._onUserThemeChanged)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
 
@@ -120,14 +108,14 @@ class MainWindow(MSFluentWindow):
             QShortcut(QKeySequence.StandardKey.Close, self).activated.connect(self.close)
 
     def addUrls(self, urls: list[str]) -> None:
-        dialog = self._taskDraftDialog()
+        dialog = self._draftDialog
         if urls:
             dialog.addUrls(urls)
         if not dialog.isVisible():
             dialog.showMask()
 
     def addTasks(self, tasks: list[Task]) -> None:
-        dialog = self._taskDraftDialog()
+        dialog = self._draftDialog
         dialog.addParsedTasks(tasks)
         if dialog.isVisible():
             return
@@ -138,12 +126,10 @@ class MainWindow(MSFluentWindow):
         else:
             dialog.showStandalone()
 
-    def _taskDraftDialog(self) -> TaskDraftDialog:
-        if self._draftDialog is None:
-            from app.view.dialogs.task_draft import TaskDraftDialog
-
-            self._draftDialog = TaskDraftDialog(self._draft, parent=self)
-        return self._draftDialog
+    @cached_property
+    def _draftDialog(self) -> TaskDraftDialog:
+        from app.view.dialogs.task_draft import TaskDraftDialog
+        return TaskDraftDialog(self._draft, parent=self)
 
     def confirmPair(self, request) -> None:
         from app.services.browser_service import browserService
@@ -258,7 +244,7 @@ class MainWindow(MSFluentWindow):
         if sys.platform == "darwin" and self.isFullScreen():
             event.ignore()
             self.showNormal()
-            QTimer.singleShot(1000, self.close)
+            QTimer.singleShot(1000, self, self.close)
             return
         if not self.isMaximized():
             cfg.set(cfg.geometry, self.geometry())

@@ -54,6 +54,7 @@ class SettingPage(ScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setObjectName("SettingPage")
         self.enableTransparentBackground()
+        self.setProperty("isStackedTransparent", False)
 
     def _initCards(self) -> None:
         self.speedLimitationCard = SpinBoxSettingCard(

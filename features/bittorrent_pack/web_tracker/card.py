@@ -37,7 +37,6 @@ class WebTrackerCard(SettingCard):
     def _bind(self):
         self.manageButton.clicked.connect(self._onManageClicked)
         self.refreshButton.clicked.connect(self._onRefreshClicked)
-        self.destroyed.connect(self._onDestroyed)
 
     def refreshContent(self):
         sourceCount = len(list(bittorrentConfig.webTrackerSources.value))
@@ -71,12 +70,6 @@ class WebTrackerCard(SettingCard):
             done=self._onRefreshDone, failed=self._onRefreshFailed,
             owner=self,
         )
-
-    def _onDestroyed(self, *_args):
-        if self._stateToolTip is not None:
-            self._stateToolTip.close()
-            self._stateToolTip.deleteLater()
-            self._stateToolTip = None
 
     def _onRefreshDone(self, result):
         self.refreshButton.setEnabled(True)
