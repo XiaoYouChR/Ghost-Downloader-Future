@@ -42,6 +42,7 @@ def toInt(value: str) -> int:
 @dataclass(kw_only=True, eq=False)
 class YtDlpTask(Task):
     packId: str = "ytdlp"
+    canEdit = True
 
 
 @dataclass(kw_only=True)

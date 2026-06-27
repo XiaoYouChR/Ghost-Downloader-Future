@@ -240,6 +240,8 @@ class BTSession(QObject):
                 sessionSeconds = int(status.seeding_duration.total_seconds())
                 task.seedingTimeSeconds = max(task.seedingTimeSeconds, sessionSeconds)
                 if self._isSeedingLimitReached(task):
+                    logger.info("{} 自动暂停做种: 分享率 {:.2f}%, 做种时间 {}s",
+                                task.name, task.shareRatioPercent, task.seedingTimeSeconds)
                     self.stopSeeding(task)
             except Exception:
                 pass

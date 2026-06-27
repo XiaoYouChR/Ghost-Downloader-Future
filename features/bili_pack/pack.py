@@ -6,11 +6,11 @@ from urllib.parse import parse_qs, urlparse
 from app.client import buildClient, toEmulation
 from app.config.cfg import cfg
 from app.models.pack import FeaturePack, TaskParser
-from app.models.task import Task, TaskOptions
+from app.models.task import TaskOptions
 from app.platform.filesystem import toSafeFilename
 from .account import bilibiliAccount
 from .config import bilibiliConfig
-from .task import BilibiliAudioStep, BilibiliMergeStep, BilibiliVideoStep
+from .task import BilibiliAudioStep, BilibiliMergeStep, BilibiliTask, BilibiliVideoStep
 
 
 class BilibiliParser(TaskParser):
@@ -161,10 +161,9 @@ class BilibiliParser(TaskParser):
                     "audioSize": audioSize,
                 })
 
-            task = Task(
+            task = BilibiliTask(
                 name=taskName,
                 url=url,
-                packId="bili",
                 fileSize=totalSize,
                 outputFolder=outputFolder,
             )
@@ -260,6 +259,10 @@ class BilibiliPack(FeaturePack):
 
     def parsers(self):
         return [BilibiliParser()]
+
+    def optionCards(self, task, parent=None):
+        from app.view.components.option_cards import OutputFolderCard
+        return [OutputFolderCard(parent, initial=task.outputFolder)]
 
     def start(self):
         bilibiliAccount.fetchAccountInfo()

@@ -205,14 +205,42 @@ class Task:
     def setName(self, name: str):
         self.name = toSafeFilename(name, fallback=self.name or "download")
 
-    def setOptions(self, options: dict):
-        path = options.get("outputFolder")
-        if isinstance(path, (str, Path)):
-            self.outputFolder = Path(path)
+    def setOptions(self, options: dict) -> None:
+        newFolder = options.get("outputFolder")
+        if isinstance(newFolder, (str, Path)):
+            newFolder = Path(newFolder)
+            if newFolder != self.outputFolder:
+                self._move(newFolder)
         if "category" in options:
             self.category = options["category"]
         for step in self.steps:
             step.setOptions(options)
+
+    def _move(self, newFolder: Path) -> None:
+        from shutil import move
+        oldFolder = self.outputFolder
+        newFolder.mkdir(parents=True, exist_ok=True)
+        for step in self.steps:
+            oldPath = Path(step.outputPath)
+            if not oldPath.exists():
+                continue
+            try:
+                relPath = oldPath.relative_to(oldFolder)
+            except ValueError:
+                continue
+            newPath = newFolder / relPath
+            newPath.parent.mkdir(parents=True, exist_ok=True)
+            move(str(oldPath), str(newPath))
+            ghdPath = Path(f"{oldPath}.ghd")
+            if ghdPath.exists():
+                move(str(ghdPath), str(newFolder / f"{relPath}.ghd"))
+            storedFile = getattr(step, "outputFile", "")
+            if storedFile:
+                try:
+                    step.outputFile = str(newFolder / Path(storedFile).relative_to(oldFolder))
+                except ValueError:
+                    pass
+        self.outputFolder = newFolder
 
     def currentSnapshot(self) -> tuple[float, int, int]:
         if not self.steps:
@@ -313,7 +341,7 @@ class Task:
         if self.outputPath:
             targets.add(Path(self.outputPath))
         for step in self.steps:
-            outputFile = getattr(step, "outputFile", None)
+            outputFile = getattr(step, "outputFile", "")
             if outputFile:
                 targets.add(Path(outputFile))
         for target in targets:

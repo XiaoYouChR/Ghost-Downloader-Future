@@ -43,6 +43,8 @@ class BilibiliAccount(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._username = ""
+        self._mid = ""
+        self._vip = ""
         self._qrWorkId = ""
 
     @property
@@ -56,6 +58,14 @@ class BilibiliAccount(QObject):
     @property
     def username(self) -> str:
         return self._username
+
+    @property
+    def mid(self) -> str:
+        return self._mid
+
+    @property
+    def vip(self) -> str:
+        return self._vip
 
     def startQrLogin(self):
         from app.services.coroutine_runner import coroutineRunner
@@ -72,8 +82,18 @@ class BilibiliAccount(QObject):
 
     def setCookie(self, cookie: str):
         from app.config.cfg import cfg
-        cfg.set(bilibiliConfig.userCookie, toCookie(cookie))
-        self.accountChanged.emit()
+        from app.services.coroutine_runner import coroutineRunner
+
+        cookie = toCookie(cookie)
+        oldCookie = self.cookie
+        if oldCookie and oldCookie != cookie:
+            def onDone(_):
+                cfg.set(bilibiliConfig.userCookie, cookie)
+                self.accountChanged.emit()
+            coroutineRunner.submit(self._logout(), done=onDone, failed=onDone)
+        else:
+            cfg.set(bilibiliConfig.userCookie, cookie)
+            self.accountChanged.emit()
 
     def logout(self):
         from app.services.coroutine_runner import coroutineRunner
@@ -117,7 +137,7 @@ class BilibiliAccount(QObject):
                     continue
 
                 if statusCode == 0:
-                    items = {c.name(): c.value() for c in response.cookies if c.name() and c.value()}
+                    items = {c.name: c.value for c in response.cookies if c.name and c.value}
                     successUrl = str(data.get("url") or "")
                     if not any(n in items for n in COOKIE_ORDER):
                         for name, value in parse_qsl(urlparse(successUrl).query, keep_blank_values=False):
@@ -181,7 +201,28 @@ class BilibiliAccount(QObject):
             if payload.get("code") == -101 or not data.get("isLogin"):
                 return {"isLoggedIn": False, "uname": ""}
 
-            return {"isLoggedIn": True, "uname": str(data.get("uname") or "").strip()}
+            if payload.get("code") not in {None, 0}:
+                raise ValueError(payload.get("message") or "获取登录信息失败")
+
+            vipPayload = data.get("vip") or {}
+            vipStatus = int(data.get("vipStatus") or vipPayload.get("status") or 0)
+            if vipStatus != 1:
+                vipText = "未开通"
+            else:
+                vipLabel = ((vipPayload.get("label") or {}).get("text")
+                            or (data.get("vip_label") or {}).get("text") or "").strip()
+                if vipLabel:
+                    vipText = vipLabel
+                else:
+                    vipType = int(data.get("vipType") or vipPayload.get("type") or 0)
+                    vipText = {1: "月度大会员", 2: "年度大会员"}.get(vipType, "大会员")
+
+            return {
+                "isLoggedIn": True,
+                "uname": str(data.get("uname") or "").strip(),
+                "mid": str(data.get("mid") or ""),
+                "vip": vipText,
+            }
         finally:
             client.close()
 
@@ -200,6 +241,8 @@ class BilibiliAccount(QObject):
             from app.config.cfg import cfg
             cfg.set(bilibiliConfig.userCookie, "")
             self._username = ""
+            self._mid = ""
+            self._vip = ""
             self.accountChanged.emit()
 
     def _onLogoutFailed(self, error: str):
@@ -207,6 +250,8 @@ class BilibiliAccount(QObject):
 
     def _onAccountInfoDone(self, result: dict):
         self._username = result.get("uname", "")
+        self._mid = result.get("mid", "")
+        self._vip = result.get("vip", "")
         self.accountChanged.emit()
 
     def _onAccountInfoFailed(self, error: str):

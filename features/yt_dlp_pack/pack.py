@@ -90,3 +90,9 @@ class YouTubePack(FeaturePack):
     def draftCard(self, task, parent=None):
         from .cards import YtDlpDraftCard
         return YtDlpDraftCard(task, parent)
+
+    def optionCards(self, task, parent=None):
+        from app.view.components.option_cards import OutputFolderCard
+        return [
+            OutputFolderCard(parent, initial=task.outputFolder),
+        ]

@@ -20,7 +20,7 @@ from .task import HttpTask, HttpTaskStep
 
 
 class HttpParser(TaskParser):
-    priority = 0
+    priority = 100
 
     def match(self, options: TaskOptions) -> bool:
         return urlparse(options.url).scheme.lower() in {"http", "https"}
@@ -99,7 +99,6 @@ class HttpParser(TaskParser):
                         "偏移 Range 探测成功, content-range: {}, fileSize: {}",
                         responseHeaders.get("content-range", ""), fileSize,
                     )
-                    url = finalUrl
                 else:
                     fileSize = bodyLength(responseHeaders)
                     logger.info(
@@ -123,8 +122,6 @@ class HttpParser(TaskParser):
                                 if fileSize == SpecialFileSize.UNKNOWN and fbStatus == 416:
                                     fileSize = rangeTotal(fbHeaders)
 
-                    url = finalUrl
-
                 cd = responseHeaders.get("content-disposition", "")
                 if cd:
                     msg = Message()
@@ -140,7 +137,7 @@ class HttpParser(TaskParser):
                     name = unquote(urlparse(cl).path.split("/")[-1])
 
                 if not name:
-                    queryParams = parse_qs(urlparse(url).query)
+                    queryParams = parse_qs(urlparse(finalUrl).query)
                     rcd = queryParams.get("response-content-disposition", [""])[0]
                     if "filename=" in rcd.lower():
                         m = re.search(r'filename\s*=\s*["\']?([^"\';]+)["\']?', rcd, re.IGNORECASE)
@@ -148,7 +145,7 @@ class HttpParser(TaskParser):
                             name = unquote(m.group(1)).strip("\"' ")
 
                 if not name:
-                    path = urlparse(url).path
+                    path = urlparse(finalUrl).path
                     if path and "/" in path:
                         cleanPath = path.split(";")[0]
                         name = unquote(cleanPath.split("/")[-1])
@@ -192,15 +189,23 @@ class HttpPack(FeaturePack):
 
     def optionCards(self, task, parent=None):
         from app.view.components.option_cards import (
-            ClientProfileCard, SelectFolderCard, SubworkerCountCard,
+            ClientProfileCard, HeadersEditCard, OutputFolderCard, SubworkerCountCard,
         )
         step = task.steps[0] if task.steps else None
         if not isinstance(step, HttpTaskStep):
             return []
         return [
-            SelectFolderCard(parent, initial=task.outputFolder),
+            OutputFolderCard(parent, initial=task.outputFolder),
+            HeadersEditCard(parent, initial=step.headers),
             ClientProfileCard(parent, initial=step.clientProfile),
             SubworkerCountCard(parent, initial=step.subworkerCount),
+        ]
+
+    def editCards(self, task, parent=None):
+        from app.view.components.option_cards import UrlEditCard
+        return [
+            UrlEditCard(parent, initial=task.url),
+            *self.optionCards(task, parent),
         ]
 
     def taskCard(self, task, parent=None):

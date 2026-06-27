@@ -3,8 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.models.task import Task
 from http_pack.task import HttpTaskStep
 from ffmpeg_pack.task import FFmpegStep
+
+
+@dataclass(kw_only=True, eq=False)
+class BilibiliTask(Task):
+    packId: str = "bili"
+    canEdit = True
 
 
 def pageStem(taskName: str, pageSuffix: str) -> str:

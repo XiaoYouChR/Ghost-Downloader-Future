@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 @dataclass
 class BrowserClientSession:
     socket: QWebSocket
-    authenticated: bool = False
-    subscribedTasks: bool = False
+    isAuthenticated: bool = False
+    isSubscribedToTasks: bool = False
     lastSnapshot: str | None = None
 
 
@@ -155,11 +155,13 @@ class BrowserService(QObject):
 
         if source == TaskSource.RESOURCE_MERGE:
             resources = payload.get("resources") or []
+            video = self._toResourceTaskOptions(resources[0]) if len(resources) > 0 else None
+            audio = self._toResourceTaskOptions(resources[1]) if len(resources) > 1 else None
             return MergeTaskOptions(
-                url="gd3+ffmpeg://merge",
+                url=video.url if video else "",
                 outputFolder=outputFolder,
-                video=self._toResourceTaskOptions(resources[0]) if len(resources) > 0 else None,
-                audio=self._toResourceTaskOptions(resources[1]) if len(resources) > 1 else None,
+                video=video,
+                audio=audio,
             )
 
         return replace(
@@ -239,7 +241,7 @@ class BrowserService(QObject):
         }, ensure_ascii=False)
 
         for session in list(self._sessions.values()):
-            if not session.authenticated or not session.subscribedTasks:
+            if not session.isAuthenticated or not session.isSubscribedToTasks:
                 continue
             if session.lastSnapshot == snapshot:
                 continue
@@ -288,13 +290,13 @@ class BrowserService(QObject):
             self._onHello(session, data)
             return
 
-        if not session.authenticated:
+        if not session.isAuthenticated:
             self._sendError(session, "请先完成握手认证", code=ErrorCode.UNAUTHORIZED)
             session.socket.close()
             return
 
         if msgType == MessageType.SUBSCRIBE_TASKS:
-            session.subscribedTasks = True
+            session.isSubscribedToTasks = True
             session.lastSnapshot = None
             self._broadcastSnapshots()
         elif msgType == MessageType.CREATE_TASK:
@@ -315,7 +317,7 @@ class BrowserService(QObject):
             session.socket.close()
             return
 
-        session.authenticated = True
+        session.isAuthenticated = True
         self._send(session, {
             "type": MessageType.HELLO_ACK,
             "protocolVersion": PROTOCOL_VERSION,
@@ -363,6 +365,7 @@ class BrowserService(QObject):
 
         taskService.add(task)
         self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=True, taskId=task.taskId)
+        self._broadcastSnapshots()
 
     def _onTaskParseFailed(self, error: str, session: BrowserClientSession, requestId: str, **_) -> None:
         self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=False, message=error)

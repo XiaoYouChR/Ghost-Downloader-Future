@@ -131,7 +131,7 @@ class TaskPage(QWidget):
 
         self.scrollArea = ScrollArea(self)
         self.scrollWidget = QWidget(self)
-        self.emptyStatusWidget = EmptyStatusWidget(FluentIcon.EMOJI_TAB_SYMBOLS, self.tr("暂无下载任务"), self.scrollArea.viewport())
+        self.emptyStatusWidget = EmptyStatusWidget(FluentIcon.EMOJI_TAB_SYMBOLS, self.tr("暂无下载任务"), self)
 
         # toolbar
         self.toolBar = QWidget(self)
@@ -334,6 +334,8 @@ class TaskPage(QWidget):
         for card in self._cards.values():
             card.setSelectionMode(enter)
         self.commandView.setVisible(enter)
+        if enter:
+            self.commandView.raise_()
 
     def _onCardSelectionChanged(self, taskId: str, checked: bool, extend: bool) -> None:
         if not self._selectionMode:
@@ -568,12 +570,11 @@ class TaskPage(QWidget):
         self._refreshViewport()
         self.commandView.move(
             (self.width() - self.commandView.width()) // 2,
-            self.height() - self.commandView.height() - 20,
+            self.height() - self.commandView.sizeHint().height() - 20,
         )
-        viewport = self.scrollArea.viewport()
         self.emptyStatusWidget.move(
-            (viewport.width() - self.emptyStatusWidget.width()) // 2,
-            (viewport.height() - self.emptyStatusWidget.height()) // 2,
+            (self.width() - self.emptyStatusWidget.width()) // 2,
+            (self.height() - self.emptyStatusWidget.height()) // 2,
         )
 
     def showEvent(self, event) -> None:

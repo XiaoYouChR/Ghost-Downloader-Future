@@ -151,8 +151,12 @@ class BilibiliLoginSettingCard(SettingCard):
     def refreshLoginInfo(self):
         from .account import bilibiliAccount
         if bilibiliAccount.isLoggedIn:
-            name = bilibiliAccount.username or self.tr("已登录")
-            self.setContent(self.tr("状态：已登录 · {0}").format(name))
+            uname = bilibiliAccount.username or "-"
+            mid = bilibiliAccount.mid or "-"
+            vip = bilibiliAccount.vip or "未开通"
+            self.setContent(
+                self.tr("状态：已登录 用户名：{0} UID：{1} 会员状态：{2}").format(uname, mid, vip)
+            )
         else:
             self.setContent(self.tr("状态：未登录"))
         self.scanButton.setEnabled(True)
@@ -167,9 +171,17 @@ class BilibiliLoginSettingCard(SettingCard):
     def _onEditCookie(self):
         from .account import bilibiliAccount, toCookie
         dialog = EditCookieDialog(self.window(), bilibiliAccount.cookie)
-        if dialog.exec():
-            bilibiliAccount.setCookie(toCookie(dialog.cookieTextEdit.toPlainText()))
+        if not dialog.exec():
+            dialog.deleteLater()
+            return
+
+        newCookie = toCookie(dialog.cookieTextEdit.toPlainText())
         dialog.deleteLater()
+        if not newCookie:
+            bilibiliAccount.setCookie("")
+            return
+
+        bilibiliAccount.setCookie(newCookie)
 
     def _onLogout(self):
         from .account import bilibiliAccount

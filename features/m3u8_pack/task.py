@@ -30,9 +30,19 @@ DECRYPTION_ENGINES = {
 @dataclass(kw_only=True, eq=False)
 class M3U8Task(Task):
     packId: str = "m3u8"
+    canEdit = True
     manifestType: str = "m3u8"
     isLive: bool = False
     streams: list[dict] = field(default_factory=list)
+
+    def _move(self, newFolder: Path) -> None:
+        from shutil import move
+        oldTemp = self.outputFolder / ".gd3_m3u8" / self.taskId
+        if oldTemp.exists():
+            newTemp = newFolder / ".gd3_m3u8" / self.taskId
+            newTemp.parent.mkdir(parents=True, exist_ok=True)
+            move(str(oldTemp), str(newTemp))
+        super()._move(newFolder)
 
 
 @dataclass(kw_only=True)
@@ -90,6 +100,20 @@ class M3U8TaskStep(TaskStep):
     @property
     def _saveName(self) -> str:
         return Path(self.task.name).stem
+
+    def setOptions(self, options: dict) -> None:
+        if "headers" in options:
+            self.headers = options["headers"]
+        if "selectVideo" in options:
+            self.selectVideo = options["selectVideo"]
+        if "recordLimit" in options:
+            self.recordLimit = options["recordLimit"]
+        if "decryptionKeys" in options:
+            self.decryptionKeys = options["decryptionKeys"]
+        if "decryptionKeyFile" in options:
+            self.decryptionKeyFile = options["decryptionKeyFile"]
+        if "muxImports" in options:
+            self.muxImports = options["muxImports"]
 
     def terminate(self) -> None:
         self._stopping = True
@@ -332,4 +356,7 @@ class M3U8TaskStep(TaskStep):
                 self.setStatus(TaskStatus.COMPLETED)
             else:
                 self.setStatus(TaskStatus.PAUSED)
+            raise
+        except Exception as e:
+            self.setError(e)
             raise

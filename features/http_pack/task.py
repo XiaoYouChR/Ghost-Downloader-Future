@@ -17,6 +17,13 @@ from app.platform.sysio import ftruncate, pwrite
 from app.services.speed_meter import speedMeter
 
 
+PERMANENT_STATUS = frozenset({400, 401, 403, 404, 405, 410, 451})
+
+
+class PermanentDownloadError(Exception):
+    pass
+
+
 @dataclass
 class HttpSubworker:
     index: int
@@ -64,6 +71,8 @@ class HttpTaskStep(TaskStep):
         deletePath(Path(f"{path}.ghd"))
 
     def setOptions(self, options: dict) -> None:
+        if "headers" in options:
+            self.headers = options["headers"]
         if "clientProfile" in options:
             self.clientProfile = options["clientProfile"]
         if "subworkerCount" in options:
@@ -177,8 +186,12 @@ class HttpTaskStep(TaskStep):
 
             if speedRatio < 0.8 * workerRatio:
                 self.isAccelerated = True
+                logger.info("自动加速已禁用，subworker 增加比: {:.2%}, 速度提升比: {:.2%}",
+                            workerRatio, speedRatio)
             else:
                 self._accelCheckTime = 0
+                logger.info("继续自动加速，subworker 增加比: {:.2%}, 速度提升比: {:.2%}",
+                            workerRatio, speedRatio)
 
     async def _supervise(self) -> None:
         recordFile = None
@@ -220,8 +233,9 @@ class HttpTaskStep(TaskStep):
                     headers = {**self.headers, "range": f"bytes={subworker.position}-", "accept-encoding": "identity"}
                     response = await self._client.get(self.url, headers=headers)
                     try:
-                        response.raise_for_status()
                         status = response.status.as_int()
+                        if status in PERMANENT_STATUS or response.headers.contains_key("cf-mitigated"):
+                            raise PermanentDownloadError(f"服务器返回了永久错误，状态码：{status}")
                         if status != 206:
                             raise Exception(f"服务器拒绝了范围请求，状态码：{status}")
                         async for chunk in response.stream():
@@ -234,7 +248,12 @@ class HttpTaskStep(TaskStep):
                     finally:
                         response.close()
                     return
-                except Exception:
+                except CancelledError:
+                    raise
+                except PermanentDownloadError:
+                    raise
+                except Exception as e:
+                    logger.opt(exception=e).error("下载分片失败，将在 5 秒后重试 {}", self.outputPath)
                     await asyncio.sleep(5)
 
         elif subworker.end == SpecialFileSize.NOT_SUPPORTED:
@@ -244,8 +263,9 @@ class HttpTaskStep(TaskStep):
                     subworker.receivedBytes = 0
                     response = await self._client.get(self.url, headers=dict(self.headers))
                     try:
-                        response.raise_for_status()
                         status = response.status.as_int()
+                        if status in PERMANENT_STATUS or response.headers.contains_key("cf-mitigated"):
+                            raise PermanentDownloadError(f"服务器返回了永久错误，状态码：{status}")
                         if status != 200:
                             raise Exception(f"服务器返回了异常状态码：{status}")
                         async for chunk in response.stream():
@@ -259,7 +279,12 @@ class HttpTaskStep(TaskStep):
                         response.close()
                     ftruncate(fd, subworker.receivedBytes)
                     return
-                except Exception:
+                except CancelledError:
+                    raise
+                except PermanentDownloadError:
+                    raise
+                except Exception as e:
+                    logger.opt(exception=e).error("下载分片失败，将在 5 秒后重试 {}", self.outputPath)
                     await asyncio.sleep(5)
 
         else:
@@ -272,8 +297,9 @@ class HttpTaskStep(TaskStep):
                     }
                     response = await self._client.get(self.url, headers=headers)
                     try:
-                        response.raise_for_status()
                         status = response.status.as_int()
+                        if status in PERMANENT_STATUS or response.headers.contains_key("cf-mitigated"):
+                            raise PermanentDownloadError(f"服务器返回了永久错误，状态码：{status}")
                         if status != 206:
                             raise Exception(f"服务器拒绝了范围请求，状态码：{status}")
                         async for chunk in response.stream():
@@ -294,7 +320,12 @@ class HttpTaskStep(TaskStep):
                     if subworker.position > subworker.end:
                         subworker.receivedBytes = subworker.end - subworker.start + 1
 
-                except Exception:
+                except CancelledError:
+                    raise
+                except PermanentDownloadError:
+                    raise
+                except Exception as e:
+                    logger.opt(exception=e).error("下载分片失败，将在 5 秒后重试 {}", self.outputPath)
                     await asyncio.sleep(5)
 
             self._reassignSubworker()
@@ -347,6 +378,12 @@ class HttpTaskStep(TaskStep):
 
             self.setStatus(TaskStatus.COMPLETED)
             shouldDeleteRecord = True
+        except CancelledError:
+            self.setStatus(TaskStatus.PAUSED)
+            raise
+        except Exception as e:
+            self.setError(e)
+            raise
         finally:
             if not supervisor.done():
                 supervisor.cancel()

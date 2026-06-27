@@ -3,28 +3,60 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QTextOption
-from PySide6.QtWidgets import QDialog, QFileDialog, QHBoxLayout
+from PySide6.QtWidgets import QDialog, QFileDialog, QHBoxLayout, QVBoxLayout
+from qframelesswindow import FramelessDialog
 from qfluentwidgets import (
-    FluentIcon,
-    IndeterminateProgressBar,
-    InfoBar,
-    InfoBarPosition,
-    MessageBoxBase,
-    PushButton,
-    SubtitleLabel,
+    FluentIcon, FluentStyleSheet, FluentTitleBar,
+    IndeterminateProgressBar, InfoBar, InfoBarPosition,
+    MessageBoxBase, PushButton, SubtitleLabel,
 )
 
 from app.services.feature_service import featureService
 from app.view.components.card_groups import DraftCardGroup, OptionCardGroup
 from app.view.components.editors import AutoSizingEdit
-from app.view.components.option_cards import SelectFolderCard, SubworkerCountCard
+from app.view.components.option_cards import OutputFolderCard, SubworkerCountCard
 
 if TYPE_CHECKING:
     from app.models.task import Task
     from app.services.task_draft import TaskDraft
-    from app.view.cards.draft_cards import DraftCard
+
+
+class StandaloneWrapper(FramelessDialog):
+
+    def __init__(self, dialog: TaskDraftDialog):
+        super().__init__()
+        self._dialog = dialog
+        self.contentLayout = QVBoxLayout(self)
+
+        self._initWidget()
+        self._initLayout()
+
+    def _initWidget(self) -> None:
+        self.setResizeEnabled(False)
+        titleBar = FluentTitleBar(self)
+        self.setTitleBar(titleBar)
+        self.titleBar.maxBtn.hide()
+        self.titleBar.iconLabel.hide()
+        self.titleBar.setDoubleClickEnabled(False)
+        self.titleBar.setFixedHeight(30)
+        self.setWindowTitle(self._dialog.tr("添加任务"))
+        FluentStyleSheet.DIALOG.apply(self)
+
+    def _initLayout(self) -> None:
+        self.contentLayout.setContentsMargins(0, 30, 0, 0)
+        self.contentLayout.setSpacing(0)
+
+    def setContent(self, widget) -> None:
+        self.contentLayout.addWidget(widget)
+
+    def takeContent(self, widget) -> None:
+        self.contentLayout.removeWidget(widget)
+
+    def closeEvent(self, event) -> None:
+        event.ignore()
+        self._dialog.reject()
 
 
 class TaskDraftDialog(MessageBoxBase):
@@ -33,7 +65,9 @@ class TaskDraftDialog(MessageBoxBase):
         super().__init__(parent)
         self._draft = draft
         self._parseTimer = QTimer(self, singleShot=True)
-        self._cardByUrl: dict[str, DraftCard] = {}
+        self._standaloneWrapper = StandaloneWrapper(self)
+        self._isStandalone = False
+        self._cardByUrl: dict[str, object] = {}
 
         self.titleLabel = SubtitleLabel(self.tr("添加任务"), self)
         self.urlEdit = AutoSizingEdit(self)
@@ -47,6 +81,10 @@ class TaskDraftDialog(MessageBoxBase):
         self._initLayout()
         self._bind()
 
+    @property
+    def isActive(self) -> bool:
+        return self.isVisible() or (self._isStandalone and self._standaloneWrapper.isVisible())
+
     def _initWidget(self) -> None:
         self.hide()
         self.widget.setFixedWidth(700)
@@ -56,7 +94,7 @@ class TaskDraftDialog(MessageBoxBase):
         self._fileTypes = featureService.fileTypes()
         self.importButton.setVisible(bool(self._fileTypes))
 
-        self.optionGroup.addCard(SelectFolderCard(self.optionGroup))
+        self.optionGroup.addCard(OutputFolderCard(self.optionGroup))
         self.optionGroup.addCard(SubworkerCountCard(self.optionGroup))
 
     def _initLayout(self) -> None:
@@ -83,18 +121,26 @@ class TaskDraftDialog(MessageBoxBase):
         self.importButton.clicked.connect(self._onImportClicked)
 
     def showStandalone(self) -> None:
-        if self.isVisible():
-            from app.platform.desktop import raiseWindow
-            raiseWindow(self)
+        from app.platform.desktop import raiseWindow
+
+        if self._isStandalone and self._standaloneWrapper.isVisible():
+            raiseWindow(self._standaloneWrapper)
             return
-        self.windowMask.hide()
-        self.resize(740, 600)
-        self.show()
-        self.raise_()
-        self.activateWindow()
+
+        if self.isVisible() and not self._isStandalone:
+            self.setGraphicsEffect(None)
+            self.widget.setGraphicsEffect(None)
+            QDialog.done(self, QDialog.DialogCode.Rejected)
+
+        if not self._isStandalone:
+            self._toStandalone()
+
+        raiseWindow(self._standaloneWrapper)
 
     def showMask(self) -> int:
-        self.windowMask.show()
+        if self._isStandalone:
+            self._toMask()
+
         parent = self.parentWidget()
         if parent is not None:
             self.setGeometry(0, 0, parent.width(), parent.height())
@@ -131,12 +177,33 @@ class TaskDraftDialog(MessageBoxBase):
         self.urlEdit.clear()
         self.optionGroup.reset()
         self._parseTimer.stop()
-        super().done(code)
+        self._cardByUrl.clear()
+        self.draftGroup.clear()
+
+        if self._isStandalone:
+            self._standaloneWrapper.hide()
+        else:
+            super().done(code)
 
     def validate(self) -> bool:
         self._parseTimer.stop()
         self._onParseNeeded()
         return self._draft.canConfirm()
+
+    def _toStandalone(self) -> None:
+        self.hBoxLayout.removeWidget(self.widget)
+        self._standaloneWrapper.setContent(self.widget)
+        self.widget.setStyleSheet("#centerWidget { border: none; border-radius: 0; }")
+        self.widget.show()
+        self._isStandalone = True
+
+    def _toMask(self) -> None:
+        self._standaloneWrapper.hide()
+        self._standaloneWrapper.takeContent(self.widget)
+        self.widget.setStyleSheet("")
+        self.hBoxLayout.addWidget(self.widget, 1, Qt.AlignmentFlag.AlignCenter)
+        self.widget.show()
+        self._isStandalone = False
 
     def _onParseNeeded(self) -> None:
         self._draft.setBaseOptions(self.optionGroup.options())
@@ -146,7 +213,7 @@ class TaskDraftDialog(MessageBoxBase):
         card = featureService.draftCard(task, self.draftGroup)
         card.categoryPicked.connect(lambda cid: self._draft.setUrlCategory(url, cid))
         card.editRequested.connect(lambda u=url: self._onEditRequested(u))
-        self.draftGroup.addCard(card)
+        self.draftGroup.addCard(url, card)
         self._cardByUrl[url] = card
 
     def _onEditRequested(self, url: str) -> None:
@@ -155,7 +222,7 @@ class TaskDraftDialog(MessageBoxBase):
         task = self._draft.taskByUrl(url)
         if task is None:
             return
-        dialog = DraftEditDialog(task, parent=self.window())
+        dialog = DraftEditDialog(task, featureService.optionCards(task, self.window()), self.window())
         dialog.exec()
 
     def _onParseFailed(self, url: str, error: str) -> None:
@@ -169,18 +236,7 @@ class TaskDraftDialog(MessageBoxBase):
         )
 
     def _onItemsChanged(self) -> None:
-        currentUrls = set(self._draft.urls())
-        for url in list(self._cardByUrl):
-            if url not in currentUrls:
-                card = self._cardByUrl.pop(url)
-                self.draftGroup.scrollLayout.removeWidget(card)
-                card.deleteLater()
-        for i, url in enumerate(self._draft.urls()):
-            card = self._cardByUrl.get(url)
-            if card is not None:
-                layout = self.draftGroup.scrollLayout
-                if layout.indexOf(card) != i:
-                    layout.insertWidget(i, card, alignment=Qt.AlignmentFlag.AlignTop)
+        self.draftGroup.setUrls(self._draft.urls())
 
     def _onCleared(self) -> None:
         self._cardByUrl.clear()

@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout
 from qfluentwidgets import BodyLabel, ComboBox, CompactSpinBox, FluentIcon, TransparentToolButton
 
 from app.format import toReadableSize
@@ -12,6 +11,7 @@ from app.models.task import TaskStatus
 from app.view.cards.draft_cards import UniversalDraftCard
 from app.view.cards.task_cards import UniversalTaskCard
 from app.view.components.editors import AutoSizingEdit
+from app.view.components.option_cards import OptionCard
 
 if TYPE_CHECKING:
     from .task import M3U8TaskStep
@@ -84,16 +84,8 @@ class M3U8LiveTaskCard(UniversalTaskCard):
         return self._task.steps[0] if self._task.steps else None
 
 
-class M3U8OptionCard(QWidget):
-    optionsChanged = Signal()
-
-    @property
-    def options(self) -> dict:
-        return {}
-
-
-class StreamSelectCard(M3U8OptionCard):
-    def __init__(self, icon, title: str, parent=None, *, streams: list, initial: str = ""):
+class StreamSelectCard(OptionCard):
+    def __init__(self, parent=None, *, streams: list, initial: str = ""):
         super().__init__(parent)
         self._streams = streams
         self._initial = initial
@@ -101,7 +93,6 @@ class StreamSelectCard(M3U8OptionCard):
 
         self._initWidget()
         self._initLayout()
-        self._bind()
 
     def _initWidget(self):
         self.comboBox.setMinimumWidth(220)
@@ -131,16 +122,12 @@ class StreamSelectCard(M3U8OptionCard):
         layout.addWidget(self.comboBox)
         layout.addStretch(1)
 
-    def _bind(self):
-        self.comboBox.currentIndexChanged.connect(lambda _: self.optionsChanged.emit())
-
-    @property
     def options(self) -> dict:
         return {"selectVideo": self.comboBox.currentData() or ""}
 
 
-class RecordLimitCard(M3U8OptionCard):
-    def __init__(self, icon, title: str, parent=None, *, initial: str = ""):
+class RecordLimitCard(OptionCard):
+    def __init__(self, parent=None, *, initial: str = ""):
         super().__init__(parent)
         self._initial = initial
         self.hourSpinBox = CompactSpinBox(self)
@@ -149,7 +136,6 @@ class RecordLimitCard(M3U8OptionCard):
 
         self._initWidget()
         self._initLayout()
-        self._bind()
 
     def _initWidget(self):
         self.hourSpinBox.setRange(0, 99)
@@ -176,22 +162,17 @@ class RecordLimitCard(M3U8OptionCard):
         layout.addWidget(self.secondSpinBox)
         layout.addStretch(1)
 
-    def _bind(self):
-        for box in (self.hourSpinBox, self.minuteSpinBox, self.secondSpinBox):
-            box.valueChanged.connect(lambda _: self.optionsChanged.emit())
-
-    @property
     def options(self) -> dict:
         h, m, s = self.hourSpinBox.value(), self.minuteSpinBox.value(), self.secondSpinBox.value()
         limit = f"{h:02}:{m:02}:{s:02}" if h + m + s > 0 else ""
         return {"recordLimit": limit}
 
 
-class DecryptionKeyCard(M3U8OptionCard):
-    def __init__(self, icon, title: str, parent=None, *, keys: list | None = None, keyTextFile: str = ""):
+class DecryptionKeyCard(OptionCard):
+    def __init__(self, parent=None, *, keys: list | None = None, keyTextFile: str = ""):
         super().__init__(parent)
         self._keyTextFile = keyTextFile
-        self.titleLabel = BodyLabel(title, self)
+        self.titleLabel = BodyLabel(self.tr("解密密钥"), self)
         self.keyFileButton = TransparentToolButton(FluentIcon.FOLDER_ADD, self)
         self.keyFileLabel = BodyLabel(self)
         self.keysEdit = AutoSizingEdit(self, minimumVisibleLines=3, maximumVisibleLines=10)
@@ -221,7 +202,6 @@ class DecryptionKeyCard(M3U8OptionCard):
         layout.addWidget(self.keysEdit)
 
     def _bind(self):
-        self.keysEdit.textChanged.connect(self.optionsChanged.emit)
         self.keyFileButton.clicked.connect(self._onChooseKeyFile)
 
     def _onChooseKeyFile(self):
@@ -230,23 +210,20 @@ class DecryptionKeyCard(M3U8OptionCard):
             return
         self._keyTextFile = path
         self.keyFileLabel.setText(Path(path).name)
-        self.optionsChanged.emit()
 
-    @property
     def options(self) -> dict:
         keys = [line.strip() for line in self.keysEdit.toPlainText().splitlines() if line.strip()]
         return {"decryptionKeys": keys, "decryptionKeyFile": self._keyTextFile}
 
 
-class MuxImportCard(M3U8OptionCard):
-    def __init__(self, icon, title: str, parent=None, *, initial: list | None = None):
+class MuxImportCard(OptionCard):
+    def __init__(self, parent=None, *, initial: list | None = None):
         super().__init__(parent)
-        self.titleLabel = BodyLabel(title, self)
+        self.titleLabel = BodyLabel(self.tr("导入音轨/字幕"), self)
         self.importEdit = AutoSizingEdit(self, minimumVisibleLines=3, maximumVisibleLines=10)
 
         self._initWidget(initial or [])
         self._initLayout()
-        self._bind()
 
     def _initWidget(self, imports: list):
         self.importEdit.setPlaceholderText('path="aud.m4a":lang=eng:name="Audio"')
@@ -264,10 +241,6 @@ class MuxImportCard(M3U8OptionCard):
         layout.addLayout(titleRow)
         layout.addWidget(self.importEdit)
 
-    def _bind(self):
-        self.importEdit.textChanged.connect(self.optionsChanged.emit)
-
-    @property
     def options(self) -> dict:
         imports = [line.strip() for line in self.importEdit.toPlainText().splitlines() if line.strip()]
         return {"muxImports": imports}

@@ -65,7 +65,7 @@ class DraftCard(QWidget):
 
     def _bind(self) -> None:
         self.nameLabel.editRequested.connect(self._onNameEditRequested)
-        self.nameEdit.editingFinished.connect(self._onNameEditFinished)
+        self.nameEdit.editingFinished.connect(self._onNameEdited)
         self.editButton.clicked.connect(self.editRequested.emit)
         self.categoryButton.clicked.connect(self._showCategoryMenu)
         cfg.isCategoryEnabled.valueChanged.connect(self._refreshCategoryButton)
@@ -79,7 +79,7 @@ class DraftCard(QWidget):
         self.nameEdit.setFocus()
         self.nameEdit.selectAll()
 
-    def _onNameEditFinished(self) -> None:
+    def _onNameEdited(self) -> None:
         newName = self.nameEdit.text().strip()
         if newName and newName != self._task.name:
             self._task.setName(newName)

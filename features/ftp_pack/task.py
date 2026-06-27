@@ -134,6 +134,10 @@ class FtpStep(TaskStep):
             return self.outputFile
         return str(self.task.outputFolder / self.task.name)
 
+    def setOptions(self, options: dict) -> None:
+        if "subworkerCount" in options:
+            self.subworkerCount = options["subworkerCount"]
+
     def setStatus(self, status: TaskStatus, sync: bool = True):
         if status == TaskStatus.COMPLETED:
             self.receivedBytes = self.fileSize
@@ -262,8 +266,12 @@ class FtpStep(TaskStep):
 
             if speedRatio < 0.8 * workerRatio:
                 self.isAccelerated = True
+                logger.info("自动加速已禁用，subworker 增加比: {:.2%}, 速度提升比: {:.2%}",
+                            workerRatio, speedRatio)
             else:
                 self._accelCheckTime = 0
+                logger.info("继续自动加速，subworker 增加比: {:.2%}, 速度提升比: {:.2%}",
+                            workerRatio, speedRatio)
 
     async def _supervise(self) -> None:
         recordFile = None
@@ -468,6 +476,11 @@ class FtpStep(TaskStep):
             shouldDeleteRecord = True
         except CancelledError:
             await self._stopSubworkerTasks()
+            self.setStatus(TaskStatus.PAUSED)
+            raise
+        except Exception as e:
+            await self._stopSubworkerTasks()
+            self.setError(e)
             raise
         finally:
             if not supervisor.done():
@@ -483,6 +496,7 @@ class FtpStep(TaskStep):
 @dataclass(kw_only=True, eq=False)
 class FtpTask(Task):
     packId: str = "ftp"
+    canEdit = True
     fileType = FtpFile
     connectionInfo: FtpConnectionInfo
     sourceType: str = "file"
@@ -496,6 +510,50 @@ class FtpTask(Task):
     @property
     def isFolder(self) -> bool:
         return self.sourceType == "dir"
+
+    @property
+    def countSelected(self) -> int:
+        return sum(1 for file in self.files if file.selected)
+
+    def _updateFilesFromSteps(self) -> None:
+        if not self.files:
+            return
+        for step in self.steps:
+            fileIndex = getattr(step, "fileIndex", None)
+            if fileIndex is not None and fileIndex < len(self.files):
+                file = self.files[fileIndex]
+                file.downloadedBytes = step.receivedBytes
+                file.completed = step.status == TaskStatus.COMPLETED
+
+    def updateStatus(self) -> TaskStatus:
+        self._updateFilesFromSteps()
+        selected = [s for s in self.steps if self._isStepSelected(s)]
+        if not selected:
+            self.status = TaskStatus.COMPLETED
+            return self.status
+        statuses = [s.status for s in selected]
+        if any(s == TaskStatus.FAILED for s in statuses):
+            self.status = TaskStatus.FAILED
+        elif all(s == TaskStatus.COMPLETED for s in statuses):
+            self.status = TaskStatus.COMPLETED
+        elif any(s == TaskStatus.RUNNING for s in statuses):
+            self.status = TaskStatus.RUNNING
+        elif all(s == TaskStatus.PAUSED for s in statuses):
+            self.status = TaskStatus.PAUSED
+        else:
+            self.status = TaskStatus.WAITING
+        return self.status
+
+    def setStatus(self, status: TaskStatus) -> TaskStatus:
+        for step in self.steps:
+            if not self._isStepSelected(step):
+                continue
+            if step.status == TaskStatus.COMPLETED:
+                continue
+            if status == TaskStatus.RUNNING and step.status == TaskStatus.FAILED:
+                step.reset(sync=False)
+            step.setStatus(status, sync=False)
+        return self.updateStatus()
 
     def pendingSteps(self):
         self.steps.sort(key=lambda step: step.stepIndex)

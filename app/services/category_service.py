@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.models.task import Task
 
 
-BUILTINS: list[dict[str, Any]] = [
+DEFAULT_CATEGORY_PRESETS: list[dict[str, Any]] = [
     {
         "categoryId": "cat_video",
         "name": "视频",
@@ -138,7 +138,7 @@ class CategoryService(QObject):
     def _load(self) -> None:
         raw = cfg.categoryRules.value
         if not raw:
-            self._categories = [Category.fromDict(data) for data in BUILTINS]
+            self._categories = [Category.fromDict(data) for data in DEFAULT_CATEGORY_PRESETS]
             self._save()
             return
         self._categories = [Category.fromDict(data) for data in raw]
@@ -201,7 +201,7 @@ class CategoryService(QObject):
             self._save()
 
     def reset(self) -> None:
-        self._categories = [Category.fromDict(data) for data in BUILTINS]
+        self._categories = [Category.fromDict(data) for data in DEFAULT_CATEGORY_PRESETS]
         self._save()
 
     def reorder(self, categoryIds: list[str]) -> None:

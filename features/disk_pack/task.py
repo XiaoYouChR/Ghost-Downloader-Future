@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import CancelledError
 import shutil
 import sys
 import tarfile
@@ -92,25 +93,32 @@ class ExtractStep(TaskStep):
                             await asyncio.sleep(0)
 
     async def run(self) -> None:
-        archive = Path(self.archivePath)
-        if not archive.is_file():
-            raise FileNotFoundError(f"未找到安装包: {archive}")
+        try:
+            archive = Path(self.archivePath)
+            if not archive.is_file():
+                raise FileNotFoundError(f"未找到安装包: {archive}")
 
-        outputFolder = Path(self.outputFolder)
-        self.progress = 0
-        self.speed = 0
-        self.receivedBytes = 0
-        outputFolder.mkdir(parents=True, exist_ok=True)
+            outputFolder = Path(self.outputFolder)
+            self.progress = 0
+            self.speed = 0
+            self.receivedBytes = 0
+            outputFolder.mkdir(parents=True, exist_ok=True)
 
-        lowered = archive.name.lower()
-        if lowered.endswith(".tar.gz"):
-            await self._extractTar(archive, outputFolder)
-        elif lowered.endswith(".zip"):
-            await self._extractZip(archive, outputFolder)
-        else:
-            raise RuntimeError(f"不支持的压缩包格式: {archive.name}")
+            lowered = archive.name.lower()
+            if lowered.endswith(".tar.gz"):
+                await self._extractTar(archive, outputFolder)
+            elif lowered.endswith(".zip"):
+                await self._extractZip(archive, outputFolder)
+            else:
+                raise RuntimeError(f"不支持的压缩包格式: {archive.name}")
 
-        self.setStatus(TaskStatus.COMPLETED)
+            self.setStatus(TaskStatus.COMPLETED)
+        except CancelledError:
+            self.setStatus(TaskStatus.PAUSED)
+            raise
+        except Exception as e:
+            self.setError(e)
+            raise
 
 
 @dataclass(kw_only=True)
@@ -163,6 +171,9 @@ class InstallStep(TaskStep):
                 archive.unlink()
 
             self.setStatus(TaskStatus.COMPLETED)
+        except Exception as e:
+            self.setError(e)
+            raise
         finally:
             if self.shouldDeleteSource and sourceFolder.exists():
                 shutil.rmtree(sourceFolder, ignore_errors=True)

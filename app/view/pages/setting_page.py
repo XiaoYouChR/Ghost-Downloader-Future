@@ -7,12 +7,13 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QVBoxLayout, QWidget, QApplication
 from qfluentwidgets import (
     ComboBoxSettingCard, FluentIcon, HyperlinkCard, HyperlinkButton, InfoBar,
-    InfoBarPosition, PrimaryPushSettingCard, PushSettingCard,
+    InfoBarPosition, MessageBox, PrimaryPushSettingCard, PushSettingCard,
     RangeSettingCard, ScrollArea, SwitchSettingCard, ToolButton, ToolTipFilter,
     Flyout, FlyoutView,
 )
 
 from app.config.cfg import cfg
+from app.platform.android import IS_ANDROID
 from app.config.constants import (
     AUTHOR, AUTHOR_URL, EDGE_ADDONS_URL, FEEDBACK_URL,
     FIREFOX_ADDONS_URL, VERSION, YEAR,
@@ -63,7 +64,7 @@ class SettingPage(ScrollArea):
             singleStep=512, division=1 / 1024,
         )
         from qfluentwidgets import SettingCard
-        self.downloadFolderCard = SettingCard(FluentIcon.FOLDER, self.tr("下载路径"), "")
+        self.downloadFolderCard = SettingCard(FluentIcon.FOLDER, self.tr("下载路径"), self.tr("文件默认保存位置"))
         self.downloadFolderPicker = FolderPicker(self.downloadFolderCard)
         self.downloadRestoreButton = ToolButton(FluentIcon.CANCEL, self.downloadFolderCard)
         self.downloadRestoreButton.setToolTip(self.tr("恢复默认路径"))
@@ -207,7 +208,21 @@ class SettingPage(ScrollArea):
             self.tr("在系统启动时静默运行 Ghost Downloader"),
             cfg.shouldRunAtLogin,
         )
-        self.softwareGroup.addSettingCards([
+        from app.config.paths import APP_DATA_DIR, isPortable
+        if isPortable():
+            self.migrateCard = PushSettingCard(
+                self.tr("切换到用户模式"), FluentIcon.SYNC,
+                self.tr("数据存储模式"),
+                self.tr("当前为 Portable 模式，数据保存在程序旁: {0}").format(APP_DATA_DIR),
+            )
+        else:
+            self.migrateCard = PushSettingCard(
+                self.tr("切换到 Portable 模式"), FluentIcon.SYNC,
+                self.tr("数据存储模式"),
+                self.tr("当前为用户模式，数据保存在: {0}").format(APP_DATA_DIR),
+            )
+
+        softwareCards = [
             SwitchSettingCard(FluentIcon.UPDATE, self.tr("在应用程序启动时检查更新"),
                               self.tr("新版本将更稳定，并具有更多功能"),
                               cfg.shouldCheckUpdateAtStartup),
@@ -215,7 +230,10 @@ class SettingPage(ScrollArea):
             SwitchSettingCard(FluentIcon.PASTE, self.tr("剪贴板监听"),
                               self.tr("剪贴板监听器将自动检测剪贴板中的链接并添加下载任务"),
                               cfg.isClipboardListenerEnabled),
-        ])
+        ]
+        if not IS_ANDROID:
+            softwareCards.append(self.migrateCard)
+        self.softwareGroup.addSettingCards(softwareCards)
 
         self.feedbackCard = PrimaryPushSettingCard(
             self.tr("提供反馈"), FluentIcon.FEEDBACK,
@@ -273,6 +291,8 @@ class SettingPage(ScrollArea):
         self.aboutCard.clicked.connect(self._onAboutCardClicked)
         self.feedbackCard.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
         self.openLogButton.clicked.connect(self._onOpenLogClicked)
+        if not IS_ANDROID:
+            self.migrateCard.clicked.connect(self._onMigrateClicked)
 
     def _onDownloadFolderChanged(self, path: str) -> None:
         cfg.set(cfg.downloadFolder, path)
@@ -331,6 +351,22 @@ class SettingPage(ScrollArea):
     def _onRunAtLoginChanged(self, enabled: bool) -> None:
         from app.platform.run_at_login import setRunAtLogin
         setRunAtLogin(enabled)
+
+    def _onMigrateClicked(self) -> None:
+        from app.config.paths import isPortable, migrate, PORTABLE_PATH, USER_PATH
+
+        target = USER_PATH if isPortable() else PORTABLE_PATH
+        mode = self.tr("用户模式") if isPortable() else self.tr("Portable 模式")
+        dialog = MessageBox(
+            self.tr("切换数据存储模式"),
+            self.tr("确定要切换到{0}吗？\n\n数据将被复制到新位置，程序随后退出。请手动重新打开。").format(mode),
+            self.window(),
+        )
+        if not dialog.exec():
+            return
+
+        QApplication.instance().aboutToQuit.connect(lambda: migrate(target))
+        QApplication.instance().quit()
 
     def _onAboutCardClicked(self) -> None:
         from app.services.coroutine_runner import coroutineRunner

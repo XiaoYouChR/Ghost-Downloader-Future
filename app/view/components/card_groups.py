@@ -48,12 +48,27 @@ class DraftCardGroup(TitledCardGroup):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._cardByUrl: dict[str, QWidget] = {}
         self.setTitle(self.tr("解析结果"))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-    def addCard(self, card: QWidget) -> None:
+    def addCard(self, url: str, card: QWidget) -> None:
+        self._cardByUrl[url] = card
         super().addCard(card)
+        self.updateGeometry()
+
+    def setUrls(self, urls: list[str]) -> None:
+        keep = set(urls)
+        for url in list(self._cardByUrl):
+            if url not in keep:
+                card = self._cardByUrl.pop(url)
+                self.scrollLayout.removeWidget(card)
+                card.deleteLater()
+        for i, url in enumerate(u for u in urls if u in self._cardByUrl):
+            card = self._cardByUrl[url]
+            if self.scrollLayout.indexOf(card) != i:
+                self.scrollLayout.insertWidget(i, card, alignment=Qt.AlignmentFlag.AlignTop)
         self.updateGeometry()
 
     def clear(self) -> None:
@@ -61,6 +76,7 @@ class DraftCardGroup(TitledCardGroup):
             child = self.scrollLayout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+        self._cardByUrl.clear()
         self.updateGeometry()
 
     def sizeHint(self) -> QSize:

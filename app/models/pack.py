@@ -103,6 +103,9 @@ class FeaturePack:
     def optionCards(self, task: Task, parent=None) -> list[QWidget]:
         return []
 
+    def editCards(self, task: Task, parent=None) -> list[QWidget]:
+        return self.optionCards(task, parent)
+
     def fileTypes(self) -> list[FileType]:
         return []
 

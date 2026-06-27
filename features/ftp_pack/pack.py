@@ -18,7 +18,7 @@ from .task import (
 
 
 class FtpParser(TaskParser):
-    priority = 40
+    priority = 95
 
     def match(self, options: TaskOptions) -> bool:
         return urlparse(options.url).scheme.lower() in {"ftp", "ftps"}
@@ -137,3 +137,13 @@ class FtpPack(FeaturePack):
     def draftCard(self, task, parent=None):
         from .cards import FtpDraftCard
         return FtpDraftCard(task, parent)
+
+    def optionCards(self, task, parent=None):
+        from app.view.components.option_cards import OutputFolderCard, SubworkerCountCard
+        step = task.steps[0] if task.steps else None
+        if step is None:
+            return []
+        return [
+            OutputFolderCard(parent, initial=task.outputFolder),
+            SubworkerCountCard(parent, initial=step.subworkerCount),
+        ]

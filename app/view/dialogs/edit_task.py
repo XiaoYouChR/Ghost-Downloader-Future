@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PySide6.QtWidgets import QWidget
 from qfluentwidgets import (
     IndeterminateProgressBar, InfoBar, InfoBarPosition,
     MessageBox, MessageBoxBase, SubtitleLabel,
 )
 
 from app.format import toReadableSize
-from app.services.feature_service import featureService
 from app.view.components.card_groups import OptionCardGroup
 
 if TYPE_CHECKING:
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 class EditTaskDialog(MessageBoxBase):
 
-    def __init__(self, task: Task, parent=None):
+    def __init__(self, task: Task, cards: list[QWidget], parent=None):
         super().__init__(parent)
         self._task = task
 
@@ -30,7 +30,7 @@ class EditTaskDialog(MessageBoxBase):
         self.yesButton.setText(self.tr("应用"))
         self.cancelButton.setText(self.tr("取消"))
 
-        for card in featureService.optionCards(task, self):
+        for card in cards:
             self.cardGroup.addCard(card)
 
         self.viewLayout.addWidget(self.titleLabel)
@@ -41,15 +41,14 @@ class EditTaskDialog(MessageBoxBase):
 class DraftEditDialog(EditTaskDialog):
 
     def accept(self):
-        options = self.cardGroup.options()
-        self._task.setOptions(options)
+        self._task.setOptions(self.cardGroup.options())
         super().accept()
 
 
 class LiveEditDialog(EditTaskDialog):
 
-    def __init__(self, task: Task, parent=None):
-        super().__init__(task, parent)
+    def __init__(self, task: Task, cards: list[QWidget], parent=None):
+        super().__init__(task, cards, parent)
         self._pendingParseId: str = ""
 
     def accept(self):
@@ -58,7 +57,7 @@ class LiveEditDialog(EditTaskDialog):
         from app.services.feature_service import featureService
 
         options = self.cardGroup.options()
-        newUrl = options.get("url", "").strip()
+        newUrl = options.pop("url", "").strip()
 
         if not newUrl or newUrl == self._task.url:
             from app.services.task_service import taskService

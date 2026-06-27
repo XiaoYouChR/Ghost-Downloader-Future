@@ -44,6 +44,7 @@ class BTFile(TaskFile):
 @dataclass(kw_only=True, eq=False)
 class BTTask(Task):
     packId: str = "bt"
+    canEdit = True
     fileType = BTFile
     sourceType: str = "torrent"
     torrentData: str = ""
@@ -225,6 +226,10 @@ class BTTask(Task):
         except asyncio.CancelledError:
             self.stateText = "已暂停下载"
             self.isSeeding = False
+            self.step.setStatus(TaskStatus.PAUSED)
+            raise
+        except Exception as e:
+            self.step.setError(e)
             raise
         finally:
             btSession.alertReceived.disconnect(self._onAlert)

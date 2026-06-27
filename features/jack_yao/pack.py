@@ -208,7 +208,7 @@ class CatalogDownloadDialog(MessageBoxBase):
     def __init__(self, parent=None, catalogItems: list[dict] | None = None):
         from app.view.components.card_groups import OptionCardGroup
         from app.view.components.editors import AutoSizingEdit
-        from app.view.components.option_cards import SelectFolderCard, SubworkerCountCard
+        from app.view.components.option_cards import OutputFolderCard, SubworkerCountCard
 
         super().__init__(parent)
         self._items = catalogItems or []
@@ -230,7 +230,7 @@ class CatalogDownloadDialog(MessageBoxBase):
         self._logGroup.addSettingCard(self._logEdit)
 
         self._optionGroup = OptionCardGroup(self)
-        self._optionGroup.addCard(SelectFolderCard(self._optionGroup))
+        self._optionGroup.addCard(OutputFolderCard(self._optionGroup))
         self._optionGroup.addCard(SubworkerCountCard(self._optionGroup))
 
         self.yesButton.setText(self.tr("开始下载"))

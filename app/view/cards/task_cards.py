@@ -93,8 +93,9 @@ class TaskCard(CardWidget):
         return menu
 
     def _onEditClicked(self) -> None:
+        from app.services.feature_service import featureService
         from app.view.dialogs.edit_task import LiveEditDialog
-        LiveEditDialog(self._task, self.window()).exec()
+        LiveEditDialog(self._task, featureService.editCards(self._task, self.window()), self.window()).exec()
         self.refresh()
 
     def mouseReleaseEvent(self, e) -> None:

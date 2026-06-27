@@ -46,7 +46,11 @@ class FeatureService(QObject):
     async def parse(self, options: TaskOptions) -> Task:
         for parser in self._parsers:
             if parser.match(options):
-                return await parser.parse(options)
+                task = await parser.parse(options)
+                if not task.category:
+                    from app.services.category_service import categoryService
+                    task.category = categoryService.categoryOf(task)
+                return task
         raise ValueError(f"No parser matched: {options.url}")
 
     def matches(self, url: str) -> bool:
@@ -57,6 +61,10 @@ class FeatureService(QObject):
     def optionCards(self, task: Task, parent=None) -> list[QWidget]:
         pack = self._packByPackId.get(task.packId)
         return pack.optionCards(task, parent) if pack else []
+
+    def editCards(self, task: Task, parent=None) -> list[QWidget]:
+        pack = self._packByPackId.get(task.packId)
+        return pack.editCards(task, parent) if pack else []
 
     def taskCard(self, task: Task, parent=None):
         pack = self._packByPackId.get(task.packId)

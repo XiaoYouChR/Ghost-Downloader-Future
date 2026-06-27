@@ -31,7 +31,6 @@ class MainWindow(MSFluentWindow):
         self._isBackgroundEffectDirty = False
         super().__init__(parent)
         self.setMicaEffectEnabled(False)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self.taskPage = TaskPage(self)
         self.settingPage = SettingPage(self)
@@ -116,9 +115,10 @@ class MainWindow(MSFluentWindow):
 
     def addTasks(self, tasks: list[Task]) -> None:
         self._draftDialog.addParsedTasks(tasks)
-        if self._draftDialog.isVisible():
+        if self._draftDialog.isActive:
             return
         if sys.platform == "darwin":
+            self.show()
             from app.platform.desktop import raiseWindow
             raiseWindow(self)
             self._draftDialog.showMask()
@@ -231,14 +231,14 @@ class MainWindow(MSFluentWindow):
         openFolder(APP_DATA_DIR)
 
     def closeEvent(self, event) -> None:
+        event.ignore()
         if sys.platform == "darwin" and self.isFullScreen():
-            event.ignore()
             self.showNormal()
-            QTimer.singleShot(1000, self.close)
+            QTimer.singleShot(1000, self.hide)
             return
         if not self.isMaximized():
             cfg.set(cfg.geometry, self.geometry())
-        event.accept()
+        self.hide()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class PackManifest:
     name: str
     entryPath: Path
-    directory: Path
+    folder: Path
     dependencies: tuple[str, ...]
 
     @classmethod
@@ -60,7 +60,7 @@ class PackManifest:
         return cls(
             name=packDir.name,
             entryPath=entryPath,
-            directory=packDir,
+            folder=packDir,
             dependencies=tuple(deps),
         )
 
@@ -123,7 +123,7 @@ def loadManifest(manifest: PackManifest) -> FeaturePack | None:
         spec = importlib.util.spec_from_file_location(
             moduleName,
             manifest.entryPath,
-            submodule_search_locations=[str(manifest.directory)],
+            submodule_search_locations=[str(manifest.folder)],
         )
         if spec is None or spec.loader is None:
             logger.error("无法创建模块规格: {}", moduleName)

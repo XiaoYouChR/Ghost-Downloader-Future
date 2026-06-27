@@ -2,22 +2,30 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout, QSizePolicy, QWidget
 from qfluentwidgets import (
-    Action, BodyLabel, FluentIcon, IconWidget, LineEdit, Slider, isDarkTheme,
+    Action, BodyLabel, FluentIcon, IconWidget, LineEdit, Slider,
+    TransparentToolButton, isDarkTheme,
 )
 
 from app.config.cfg import cfg
 
 
 class OptionCard(QWidget):
+
+    def options(self) -> dict:
+        return {}
+
+    def reset(self) -> None:
+        pass
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setPen(QColor(0, 0, 0, 96 if isDarkTheme() else 48))
         painter.drawLine(self.rect().topLeft(), self.rect().topRight())
 
 
-class SelectFolderCard(OptionCard):
+class OutputFolderCard(OptionCard):
 
     def __init__(self, parent=None, *, initial: Path | None = None):
         super().__init__(parent)
@@ -150,3 +158,92 @@ class ClientProfileCard(OptionCard):
         from app.client import toProfileLabel
         self._value = value
         self.button.setText(toProfileLabel(value))
+
+
+class UrlEditCard(OptionCard):
+
+    def __init__(self, parent=None, *, initial: str = ""):
+        super().__init__(parent)
+        self.setFixedHeight(50)
+        self._initial = initial
+        self.iconWidget = IconWidget(FluentIcon.LINK, self)
+        self.iconWidget.setFixedSize(16, 16)
+        self.titleLabel = BodyLabel(self.tr("下载链接"), self)
+        self.urlEdit = LineEdit(self)
+        self.urlEdit.setText(initial)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(24, 5, 24, 5)
+        layout.setSpacing(15)
+        layout.addWidget(self.iconWidget)
+        layout.addWidget(self.titleLabel)
+        layout.addStretch(1)
+        layout.addWidget(self.urlEdit, stretch=3)
+
+    def options(self) -> dict:
+        return {"url": self.urlEdit.text().strip()}
+
+    def reset(self) -> None:
+        self.urlEdit.setText(self._initial)
+
+
+class HeadersEditCard(OptionCard):
+
+    def __init__(self, parent=None, *, initial: dict[str, str] | None = None):
+        from app.view.components.editors import AutoSizingEdit
+
+        super().__init__(parent)
+        self.iconWidget = IconWidget(FluentIcon.GLOBE, self)
+        self.iconWidget.setFixedSize(16, 16)
+        self.titleLabel = BodyLabel(self.tr("请求标头"), self)
+        self.resetButton = TransparentToolButton(FluentIcon.SYNC, self)
+        self.headersEdit = AutoSizingEdit(self, minimumVisibleLines=4, maximumVisibleLines=10)
+
+        self.vBoxLayout = QVBoxLayout(self)
+        self.titleRowLayout = QHBoxLayout()
+
+        self._initWidget()
+        self._initLayout()
+        self._bind()
+
+        self.headersEdit.setPlainText(self._headersToText(initial or dict(cfg.defaultRequestHeaders.value)))
+
+    def _initWidget(self) -> None:
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.resetButton.setToolTip(self.tr("恢复默认请求标头"))
+        self.headersEdit.setPlaceholderText(self.tr("每行一个 Name: Value"))
+
+    def _initLayout(self) -> None:
+        self.titleRowLayout.setSpacing(15)
+        self.titleRowLayout.addWidget(self.iconWidget)
+        self.titleRowLayout.addWidget(self.titleLabel)
+        self.titleRowLayout.addStretch(1)
+        self.titleRowLayout.addWidget(self.resetButton)
+
+        self.vBoxLayout.setContentsMargins(24, 10, 24, 12)
+        self.vBoxLayout.setSpacing(10)
+        self.vBoxLayout.addLayout(self.titleRowLayout)
+        self.vBoxLayout.addWidget(self.headersEdit)
+
+    def _bind(self) -> None:
+        self.resetButton.clicked.connect(self.reset)
+
+    def options(self) -> dict:
+        return {"headers": self._textToHeaders(self.headersEdit.toPlainText())}
+
+    def reset(self) -> None:
+        self.headersEdit.setPlainText(self._headersToText(dict(cfg.defaultRequestHeaders.value)))
+
+    def _headersToText(self, headers: dict[str, str]) -> str:
+        return "\n".join(f"{name}: {value}" for name, value in headers.items())
+
+    def _textToHeaders(self, text: str) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for line in text.splitlines():
+            name, separator, value = line.partition(":")
+            if not separator:
+                continue
+            key = name.strip().lower()
+            if key:
+                result[key] = value.strip()
+        return result

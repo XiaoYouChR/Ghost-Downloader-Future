@@ -53,39 +53,52 @@ def startApp(application, isSilent=False):
 
     application.setQuitOnLastWindowClosed(False)
     coroutineRunner.start()
+
+    window = MainWindow()
+
+    if not isSilent:
+        from qfluentwidgets import SplashScreen
+        splash = SplashScreen(window.windowIcon(), window, enableShadow=False)
+        splash.raise_()
+        window.show()
+
     featureService.load()
     taskService.taskStarted.connect(lambda _: speedMeter.start())
     taskService.tasksAllCompleted.connect(speedMeter.stop)
     taskService.resumeSaved()
     featureService.start()
 
-    window = None
+    if not isSilent:
+        splash.finish()
 
     def onWindowDestroyed():
         nonlocal window
         window = None
+
+    window.destroyed.connect(onWindowDestroyed)
 
     def show() -> MainWindow:
         nonlocal window
         if window is None:
             window = MainWindow()
             window.destroyed.connect(onWindowDestroyed)
-            from qfluentwidgets import SplashScreen
-            splash = SplashScreen(window.windowIcon(), window, enableShadow=False)
-            splash.raise_()
-            window.show()
-            splash.finish()
-        else:
-            window.show()
+        window.show()
         from app.platform.desktop import raiseWindow
         raiseWindow(window)
         return window
+
+    def onBrowserDraft(tasks):
+        nonlocal window
+        if window is None:
+            window = MainWindow()
+            window.destroyed.connect(onWindowDestroyed)
+        window.addTasks(tasks)
 
     signalBus.activationRequested.connect(show)
     signalBus.openFileRequested.connect(lambda uris: show().addUrls(uris))
     signalBus.exceptionCaught.connect(lambda msg: show().alertException(msg))
     signalBus.updateAvailable.connect(lambda release: show()._onUpdateAvailable(release))
-    browserService.taskDraftRequested.connect(lambda tasks: show().addTasks(tasks))
+    browserService.taskDraftRequested.connect(onBrowserDraft)
     browserService.pairRequested.connect(lambda req: show().confirmPair(req))
 
     clipboardListener = ClipboardListener(parent=application)
@@ -122,9 +135,6 @@ def startApp(application, isSilent=False):
 
     from app.services.plan import plan
     taskService.tasksAllCompleted.connect(plan.trigger)
-
-    if not isSilent:
-        show()
 
     if cfg.shouldCheckUpdateAtStartup.value:
         from app.update import fetchRelease, isOutdated

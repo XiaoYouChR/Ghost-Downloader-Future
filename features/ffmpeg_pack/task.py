@@ -100,6 +100,9 @@ class FFmpegStep(TaskStep):
                 with suppress(asyncio.CancelledError):
                     await progressTask
             raise
+        except Exception as e:
+            self.setError(e)
+            raise
 
     async def _readProgress(self, stream: asyncio.StreamReader, totalDuration: float):
         while True:

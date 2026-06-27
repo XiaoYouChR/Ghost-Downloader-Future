@@ -89,7 +89,7 @@ class M3U8Parser(TaskParser):
                         try:
                             variantResponse = await variantClient.get(variantUrl)
                             variantResponse.raise_for_status()
-                            variantBody = variantResponse.text
+                            variantBody = await variantResponse.text()
                         finally:
                             variantClient.close()
                         isLive = not m3u8.loads(variantBody, uri=variantUrl).is_endlist
@@ -258,6 +258,27 @@ class M3U8Pack(FeaturePack):
     def draftCard(self, task, parent=None):
         from .cards import M3U8DraftCard
         return M3U8DraftCard(task, parent)
+
+    def optionCards(self, task, parent=None):
+        from app.view.components.option_cards import HeadersEditCard, OutputFolderCard
+        from .cards import StreamSelectCard, RecordLimitCard, DecryptionKeyCard, MuxImportCard
+        from .task import M3U8TaskStep
+
+        step = task.steps[0] if task.steps else None
+        if not isinstance(step, M3U8TaskStep):
+            return []
+
+        cards = [
+            OutputFolderCard(parent, initial=task.outputFolder),
+            HeadersEditCard(parent, initial=step.headers),
+        ]
+        if len(task.streams) > 1:
+            cards.append(StreamSelectCard(parent, streams=task.streams, initial=step.selectVideo))
+        if task.isLive:
+            cards.append(RecordLimitCard(parent, initial=step.recordLimit))
+        cards.append(DecryptionKeyCard(parent, keys=step.decryptionKeys, keyTextFile=step.decryptionKeyFile))
+        cards.append(MuxImportCard(parent, initial=step.muxImports))
+        return cards
 
     def fileTypes(self):
         return [

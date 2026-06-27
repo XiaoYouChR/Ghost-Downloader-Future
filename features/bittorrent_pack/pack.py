@@ -118,6 +118,10 @@ class BitTorrentPack(FeaturePack):
         from .cards import BTDraftCard
         return BTDraftCard(task, parent)
 
+    def optionCards(self, task, parent=None):
+        from app.view.components.option_cards import OutputFolderCard
+        return [OutputFolderCard(parent, initial=task.outputFolder)]
+
     def fileTypes(self):
         return [
             FileType(
