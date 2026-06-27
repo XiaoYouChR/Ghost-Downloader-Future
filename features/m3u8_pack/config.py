@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import platform
 import sys
 from pathlib import Path
@@ -56,7 +58,7 @@ class M3U8Config(PackConfig):
     customMuxAfterDone = ConfigItem("M3U8", "CustomMuxAfterDone", "")
     shouldSelectAllAudioSubtitle = ConfigItem("M3U8", "SelectAllAudioSubtitle", True, BoolValidator())
 
-    def settingGroups(self, parent) -> list:
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         import sys
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, RangeSettingCard, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup

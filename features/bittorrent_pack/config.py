@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.config.cfg import ConfigItem
 from app.models.pack import PackConfig
 from qfluentwidgets import (
@@ -50,7 +52,7 @@ class BitTorrentConfig(PackConfig):
     )
     webTrackerCustomList = ConfigItem("BitTorrent", "WebTrackerCustomList", "")
 
-    def settingGroups(self, parent) -> list:
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         import sys
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, RangeSettingCard, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup

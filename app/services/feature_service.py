@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.pack import FeaturePack, TaskParser, FileType, PackPage
     from app.models.task import Task, TaskOptions
     from PySide6.QtWidgets import QWidget
+    from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
 
 class FeatureService(QObject):
@@ -72,12 +73,12 @@ class FeatureService(QObject):
             result.extend(pack.pages())
         return result
 
-    def settingGroups(self, parent) -> list:
-        result = []
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
+        groups = []
         for pack in self._packs:
             if pack.config:
-                result.extend(pack.config.settingGroups(parent))
-        return result
+                groups.extend(pack.config.settingGroups(parent))
+        return groups
 
     def fileTypes(self) -> list[FileType]:
         types = []

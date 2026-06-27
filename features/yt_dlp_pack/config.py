@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import platform
 import sys
 from pathlib import Path
@@ -18,7 +20,7 @@ RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
 class YtDlpConfig(PackConfig):
     installFolder = ConfigItem("YtDlp", "InstallFolder", f"{APP_DATA_DIR}/YtDlp", FolderValidator())
 
-    def settingGroups(self, parent) -> list:
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
         from app.view.components.setting_cards import SelectFolderSettingCard, RuntimeCard
 

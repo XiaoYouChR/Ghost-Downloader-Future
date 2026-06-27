@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from urllib.parse import urlparse
 
 from app.client import buildClient
@@ -193,7 +195,7 @@ class GitHubConfig(PackConfig):
     selectedSite = ConfigItem("GitHub", "SelectedSite", GITHUB_PROXY_SITES[0], GitHubProxySiteValidator())
     customSite = ConfigItem("GitHub", "CustomSite", "", GitHubProxySiteValidator())
 
-    def settingGroups(self, parent) -> list:
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         from qfluentwidgets import FluentIcon, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 

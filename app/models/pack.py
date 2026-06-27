@@ -11,6 +11,7 @@ from app.config.cfg import cfg, ConfigItem
 if TYPE_CHECKING:
     from app.models.task import Task, TaskOptions
     from PySide6.QtWidgets import QWidget
+    from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class PackConfig:
                 setattr(cfg.__class__, f"pack_{cls.__name__}_{attrName}", attrValue)
         cfg.load()
 
-    def settingGroups(self, parent) -> list:
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         return []
 
     def isFileAssociationEnabled(self) -> bool:

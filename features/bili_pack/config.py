@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from io import BytesIO
 
 from PySide6.QtCore import Qt
@@ -192,7 +194,7 @@ class BilibiliConfig(PackConfig):
     shouldIncludeHdr = ConfigItem("Bilibili", "ParseHDR", False, BoolValidator())
     shouldIncludeDolby = ConfigItem("Bilibili", "ParseDolby", False, BoolValidator())
 
-    def settingGroups(self, parent) -> list:
+    def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         from qfluentwidgets import ComboBoxSettingCard, FluentIcon, SwitchSettingCard
         from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 
