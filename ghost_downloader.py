@@ -56,6 +56,9 @@ def startApp(application, isSilent=False):
     sys.excepthook = exceptionHook
 
     application.setQuitOnLastWindowClosed(False)
+    if sys.platform == "darwin":
+        from app.view.shell.dock import setDockIconVisible
+        setDockIconVisible(cfg.shouldShowDockIcon.value, activate=False)
     coroutineRunner.start()
 
     window = MainWindow()
@@ -69,6 +72,7 @@ def startApp(application, isSilent=False):
 
     featureService.load()
     window.setupPacks()
+    window.refreshThemeColor()
 
     taskService.taskStarted.connect(lambda _: speedMeter.start())
     taskService.tasksAllCompleted.connect(speedMeter.stop)
@@ -116,6 +120,13 @@ def startApp(application, isSilent=False):
     signalBus.updateAvailable.connect(lambda release: show()._onUpdateAvailable(release))
     browserService.taskDraftRequested.connect(onBrowserDraft)
     browserService.pairRequested.connect(lambda req: show().confirmPair(req))
+    def onExtensionUpdated(version):
+        from qfluentwidgets import InfoBar, InfoBarPosition
+        w = show()
+        InfoBar.success(w.tr("浏览器扩展已更新"), f"v{version}",
+                        duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=w)
+
+    browserService.extensionUpdated.connect(onExtensionUpdated)
 
     clipboardListener = ClipboardListener(parent=application)
     cfg.isClipboardListenerEnabled.valueChanged.connect(clipboardListener.setEnabled)
@@ -130,12 +141,12 @@ def startApp(application, isSilent=False):
 
     if sys.platform == "darwin":
         from app.view.shell.mac_status_item import MacStatusItem
-        from app.view.shell.dock import setupDockSpeed
+        from app.view.shell.dock import setupDock
         statusItem = MacStatusItem()
         statusItem.show()
         speedMeter.speedChanged.connect(statusItem.setSpeed)
         application.statusItem = statusItem
-        setupDockSpeed()
+        setupDock()
     else:
         from app.view.shell.tray import SystemTrayIcon
         tray = SystemTrayIcon(QIcon(":/image/logo.png"), parent=application)

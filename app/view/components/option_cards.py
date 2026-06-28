@@ -21,7 +21,7 @@ class OptionCard(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setPen(QColor(0, 0, 0, 96 if isDarkTheme() else 48))
+        painter.setPen(QColor(0, 0, 0, 96 if isDarkTheme() else 80))
         painter.drawLine(self.rect().topLeft(), self.rect().topRight())
 
 
@@ -69,7 +69,7 @@ class SubworkerCountCard(OptionCard):
         self.setFixedHeight(50)
         self.iconWidget = IconWidget(FluentIcon.CLOUD, self)
         self.iconWidget.setFixedSize(16, 16)
-        self.titleLabel = BodyLabel(self.tr("并行连接数"), self)
+        self.titleLabel = BodyLabel(self.tr("预分配线程数"), self)
         self.slider = Slider(Qt.Orientation.Horizontal, self)
         self.valueLabel = BodyLabel(self)
 

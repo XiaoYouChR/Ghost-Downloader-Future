@@ -9,7 +9,6 @@ from qfluentwidgets import (
     ComboBoxSettingCard, FluentIcon, HyperlinkCard, HyperlinkButton, InfoBar,
     InfoBarPosition, MessageBox, PrimaryPushSettingCard, PushSettingCard,
     RangeSettingCard, ScrollArea, SwitchSettingCard, ToolButton, ToolTipFilter,
-    Flyout, FlyoutView,
 )
 
 from app.config.cfg import cfg
@@ -96,7 +95,7 @@ class SettingPage(ScrollArea):
             ProxySettingCard(cfg.proxyServer),
             self.clientProfileCard,
             DefaultHeadersSettingCard(FluentIcon.DICTIONARY, self.tr("默认请求头"),
-                                      self.tr("设置下载时使用的默认 HTTP 请求头")),
+                                      self.tr("设置默认 HTTP 请求头，User-Agent 由模拟身份控制（选择原样发送时除外）")),
         ])
 
         self.categoryRulesCard = CategoryRulesCard()
@@ -119,42 +118,52 @@ class SettingPage(ScrollArea):
             7, self.regenerateTokenButton, 0, Qt.AlignmentFlag.AlignRight,
         )
 
-        self.installExtensionCard = PushSettingCard(
-            self.tr("导出 Chromium 扩展"), FluentIcon.DICTIONARY,
-            self.tr("安装浏览器扩展"),
-            self.tr("请选择最适合您的浏览器扩展安装方式"),
+        self.storeInstallCard = HyperlinkCard(
+            EDGE_ADDONS_URL, self.tr("Edge 商店"), FluentIcon.GLOBE,
+            self.tr("从商店安装扩展"),
+            self.tr("推荐 Edge 和 Firefox 用户从商店安装"),
         )
-        firefoxBtn = HyperlinkButton(self.installExtensionCard)
-        firefoxBtn.setText(self.tr("Firefox"))
+        firefoxBtn = HyperlinkButton(self.storeInstallCard)
+        firefoxBtn.setText(self.tr("Firefox 商店"))
         firefoxBtn.setUrl(FIREFOX_ADDONS_URL)
-        self.installExtensionCard.hBoxLayout.insertWidget(
+        self.storeInstallCard.hBoxLayout.insertWidget(
             5, firefoxBtn, 0, Qt.AlignmentFlag.AlignRight,
         )
-        self.installExtensionCard.hBoxLayout.insertSpacing(6, 16)
-        edgeBtn = HyperlinkButton(self.installExtensionCard)
-        edgeBtn.setText(self.tr("Edge"))
-        edgeBtn.setUrl(EDGE_ADDONS_URL)
-        self.installExtensionCard.hBoxLayout.insertWidget(
-            5, edgeBtn, 0, Qt.AlignmentFlag.AlignRight,
-        )
-        self.installExtensionCard.hBoxLayout.insertSpacing(6, 16)
+        self.storeInstallCard.hBoxLayout.insertSpacing(6, 16)
 
-        self.installGuidanceCard = PushSettingCard(
-            self.tr("查看安装指南"), FluentIcon.HELP,
-            self.tr("浏览器扩展安装指南"),
-            self.tr("解决安装浏览器扩展时遇到的常见问题"),
+        self.chromiumInstallCard = PrimaryPushSettingCard(
+            self.tr("一键安装"), FluentIcon.DOWNLOAD,
+            self.tr("安装到 Chromium 浏览器"),
+            self.tr("自动解包扩展并引导加载（Chrome / Brave 等）"),
+        )
+        self.exportExtensionButton = HyperlinkButton(self.chromiumInstallCard)
+        self.exportExtensionButton.setText(self.tr("导出 CRX"))
+        self.chromiumInstallCard.hBoxLayout.insertWidget(
+            5, self.exportExtensionButton, 0, Qt.AlignmentFlag.AlignRight,
+        )
+        self.chromiumInstallCard.hBoxLayout.insertSpacing(6, 16)
+
+        self.browserPortCard = SpinBoxSettingCard(
+            FluentIcon.COMMAND_PROMPT, self.tr("服务端口"),
+            self.tr("浏览器扩展连接使用的端口"),
+            configItem=cfg.browserExtensionPort, singleStep=1, division=1,
+        )
+
+        self.browserEnableCard = SwitchSettingCard(
+            FluentIcon.CONNECT, self.tr("启用浏览器扩展"),
+            self.tr("接收来自浏览器的下载信息，请安装浏览器扩展后使用"),
+            cfg.isBrowserExtensionEnabled,
         )
 
         self.browserGroup.addSettingCards([
-            SwitchSettingCard(FluentIcon.CONNECT, self.tr("启用浏览器扩展"),
-                              self.tr("接收来自浏览器的下载信息，请安装浏览器扩展后使用"),
-                              cfg.isBrowserExtensionEnabled),
+            self.browserEnableCard,
             SwitchSettingCard(FluentIcon.CHAT, self.tr("收到下载信息时弹出窗口"),
                               self.tr("收到下载信息时弹出窗口，方便您调整下载参数"),
                               cfg.shouldRaiseWindowOnBrowserTask),
             self.browserPairTokenCard,
-            self.installExtensionCard,
-            self.installGuidanceCard,
+            self.storeInstallCard,
+            self.chromiumInstallCard,
+            self.browserPortCard,
         ])
 
         self.zoomCard = SpinBoxSettingCard(
@@ -273,8 +282,11 @@ class SettingPage(ScrollArea):
         self.addSettingGroup(self.aboutGroup)
 
     def _bind(self) -> None:
+        from app.services.browser_service import browserService
+
         cfg.appRestartSig.connect(self._showRestartTooltip)
         cfg.browserExtensionPairToken.valueChanged.connect(self._refreshPairTokenCard)
+        browserService.connectionChanged.connect(self._refreshBrowserStatus)
         if sys.platform == "darwin":
             cfg.shouldShowDockIcon.valueChanged.connect(self.showDockSpeedCard.setEnabled)
 
@@ -286,8 +298,8 @@ class SettingPage(ScrollArea):
 
         self.browserPairTokenCard.clicked.connect(self._onCopyTokenClicked)
         self.regenerateTokenButton.clicked.connect(self._onRegenerateTokenClicked)
-        self.installExtensionCard.clicked.connect(self._onExportExtensionClicked)
-        self.installGuidanceCard.clicked.connect(self._onInstallGuidanceClicked)
+        self.chromiumInstallCard.clicked.connect(self._onChromiumInstallClicked)
+        self.exportExtensionButton.clicked.connect(self._onExportExtensionClicked)
         self.autoRunCard.checkedChanged.connect(self._onRunAtLoginChanged)
         self.aboutCard.clicked.connect(self._onAboutCardClicked)
         self.feedbackCard.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
@@ -327,6 +339,65 @@ class SettingPage(ScrollArea):
         InfoBar.success(self.tr("已重新生成配对令牌"), self.tr("新令牌已复制到剪贴板"),
                         duration=2000, position=InfoBarPosition.BOTTOM_RIGHT, parent=self.window())
 
+    def _onChromiumInstallClicked(self) -> None:
+        from app.services.browser_service import extractBrowserExtension, EXTENSION_UNPACK_DIR
+        from app.services.coroutine_runner import coroutineRunner
+
+        coroutineRunner.submit(
+            extractBrowserExtension(),
+            done=self._onExtensionExtractDone,
+            failed=self._onExtensionExtractFailed,
+        )
+
+    def _onExtensionExtractDone(self, path) -> None:
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtWidgets import QLabel
+        from qfluentwidgets import MessageBoxBase, PushButton
+        from app.platform.desktop import openChromiumUrl
+
+        QApplication.clipboard().setText(str(path))
+
+        box = MessageBoxBase(self.window())
+        box.widget.setMinimumWidth(660)
+
+        imageLabel = QLabel(box)
+        pixmap = QPixmap(":/res/install_chrome_extension_guidance.png")
+        imageLabel.setPixmap(pixmap.scaledToWidth(620, Qt.TransformationMode.SmoothTransformation))
+        box.viewLayout.addWidget(imageLabel)
+
+        pathLabel = QLabel(self.tr("扩展已解包到（路径已复制到剪贴板）：\n{}").format(path), box)
+        pathLabel.setWordWrap(True)
+        box.viewLayout.addWidget(pathLabel)
+
+        openDirBtn = PushButton(self.tr("打开扩展目录"), box)
+        openDirBtn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+        box.viewLayout.addWidget(openDirBtn)
+
+        box.yesButton.setText(self.tr("打开浏览器扩展页面"))
+        box.yesButton.clicked.disconnect()
+        box.yesButton.clicked.connect(lambda: openChromiumUrl("chrome://extensions"))
+        box.cancelButton.setText(self.tr("关闭"))
+
+        box.exec()
+
+    def _onExtensionExtractFailed(self, error: str) -> None:
+        InfoBar.error(self.tr("解包失败"), error,
+                      duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=self.window())
+
+    def _refreshBrowserStatus(self) -> None:
+        from app.services.browser_service import browserService
+        installType, version = browserService.connectionSummary
+        port = browserService.boundPort
+        if not installType:
+            text = self.tr("未连接")
+            if port:
+                text += self.tr(" · 端口 {}").format(port)
+        elif installType == "development":
+            text = self.tr("已连接 · 桌面端自管理 v{} · 端口 {}").format(version, port)
+        else:
+            text = self.tr("已连接 · 由商店管理 v{} · 端口 {}").format(version, port)
+        self.browserEnableCard.setContent(text)
+
     def _onExportExtensionClicked(self) -> None:
         from PySide6.QtCore import QResource
         from PySide6.QtWidgets import QFileDialog
@@ -335,19 +406,6 @@ class SettingPage(ScrollArea):
         if path:
             with open(path, "wb") as f:
                 f.write(QResource(":/res/chrome_extension.crx").data())
-
-    def _onInstallGuidanceClicked(self) -> None:
-        view = FlyoutView(
-            title=self.tr("安装指南"),
-            content=self.tr("请按照步骤安装浏览器扩展"),
-            image=":/res/install_chrome_extension_guidance.png",
-            isClosable=True,
-        )
-        view.viewLayout.insertSpacing(0, 960)
-        w = Flyout.make(view, self.installGuidanceCard.button, self)
-        view.closed.connect(w.close)
-        view.closed.connect(w.deleteLater)
-        view.closed.connect(view.deleteLater)
 
     def _onRunAtLoginChanged(self, enabled: bool) -> None:
         from app.platform.run_at_login import setRunAtLogin

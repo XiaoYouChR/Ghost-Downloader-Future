@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlparse
+import json
+from urllib.parse import urlparse, parse_qs
 
 from app.models.pack import FeaturePack, TaskParser
 from app.models.task import Task, TaskOptions, SpecialFileSize
@@ -21,61 +22,76 @@ class YouTubeParser(TaskParser):
         return any(host == h or host.endswith(f".{h}") for h in YOUTUBE_HOSTS)
 
     async def parse(self, options: TaskOptions) -> Task:
-        from app.config.cfg import proxy
-
         url = options.url.strip()
         headers = dict(options.headers)
-        videoFormat = DEFAULT_VIDEO_FORMAT
 
-        probedTitle = ""
-        probedSize = SpecialFileSize.UNKNOWN
+        mediaInfo = {}
+        stdout = await self._runCommand([url, "--dump-json", "--no-playlist", "--no-warnings"])
+        if stdout:
+            mediaInfo = json.loads(stdout.decode("utf-8", errors="ignore"))
 
-        execPath = ytDlpRuntime.path()
-        if execPath:
-            args = [
-                url, "-f", videoFormat, "--no-playlist", "--skip-download", "--no-warnings",
-                "--print", "%(title)s", "--print", "%(filesize_approx)s",
-            ]
-            proxyUrl = proxy()
-            if proxyUrl:
-                args.extend(["--proxy", proxyUrl])
-            for name, value in headers.items():
-                text = str(value).strip()
-                if text:
-                    args.extend(["--add-header", f"{name}:{text}"])
-
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    execPath, *args,
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                stdout, _ = await asyncio.wait_for(process.communicate(), timeout=20)
-                if process.returncode == 0:
-                    lines = stdout.decode("utf-8", errors="ignore").strip().splitlines()
-                    probedTitle = lines[0].strip() if lines else ""
-                    probedSize = toInt(lines[1]) if len(lines) > 1 else SpecialFileSize.UNKNOWN
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
-            except OSError:
-                pass
-
-        name = toSafeFilename(probedTitle) if probedTitle else "YouTube 视频"
+        title = str(mediaInfo.get("title") or "").strip()
+        name = toSafeFilename(title) if title else "YouTube 视频"
+        fileSize = toInt(str(mediaInfo.get("filesize_approx") or 0)) or SpecialFileSize.UNKNOWN
+        isPlaylist = bool(parse_qs(urlparse(url).query).get("list"))
 
         task = YtDlpTask(
             name=f"{name}.mp4",
             url=url,
-            fileSize=probedSize,
+            fileSize=fileSize,
             outputFolder=options.outputFolder,
+            isPlaylist=isPlaylist,
         )
         task.addStep(YtDlpTaskStep(
             stepIndex=1,
-            videoFormat=videoFormat,
             headers=headers,
         ))
+
+        task._mediaInfo = mediaInfo
         return task
+
+    async def probePlaylist(self, url: str) -> list[dict]:
+        stdout = await self._runCommand([url, "--flat-playlist", "--dump-json", "--no-warnings"], timeout=60)
+        entries: list[dict] = []
+        if stdout:
+            for line in stdout.decode("utf-8", errors="ignore").strip().splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        return entries
+
+    async def _runCommand(self, args: list[str], timeout: int = 30) -> bytes | None:
+        execPath = ytDlpRuntime.path()
+        if not execPath:
+            return None
+
+        from app.config.cfg import proxy
+        proxyUrl = proxy()
+        if proxyUrl:
+            args.extend(["--proxy", proxyUrl])
+        browser = ytDlpConfig.loginBrowser.value
+        if browser:
+            args.extend(["--cookies-from-browser", browser])
+
+        process = await asyncio.create_subprocess_exec(
+            execPath, *args,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+        if process.returncode == 0:
+            return stdout
+
+        errorText = stderr.decode("utf-8", errors="ignore").strip()
+        for line in reversed(errorText.splitlines()):
+            if "ERROR:" in line:
+                errorText = line.split("ERROR:", 1)[-1].strip()
+                break
+        raise RuntimeError(errorText or f"yt-dlp 退出码异常: {process.returncode}")
 
 
 class YouTubePack(FeaturePack):
@@ -86,6 +102,10 @@ class YouTubePack(FeaturePack):
 
     def parsers(self):
         return [YouTubeParser()]
+
+    def taskCard(self, task, parent=None):
+        from .cards import YtDlpTaskCard
+        return YtDlpTaskCard(task, parent)
 
     def draftCard(self, task, parent=None):
         from .cards import YtDlpDraftCard

@@ -36,6 +36,8 @@ class ED2kPack(FeaturePack):
         return [ED2kParser()]
 
     def stop(self):
-        from app.services.coroutine_runner import coroutineRunner
         from .session import ed2kSession
+        if ed2kSession._client is None:
+            return
+        from app.services.coroutine_runner import coroutineRunner
         coroutineRunner.submit(ed2kSession.close())

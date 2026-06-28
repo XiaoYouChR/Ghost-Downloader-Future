@@ -1,24 +1,49 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import struct
+import zipfile
 from dataclasses import dataclass
 from enum import StrEnum
+from io import BytesIO
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QResource, QTimer, QVersionNumber, Signal, Slot
 from PySide6.QtNetwork import QHostAddress
 from PySide6.QtWebSockets import QWebSocketServer
 from loguru import logger
 
 from app.config.cfg import cfg
-from app.config.constants import VERSION
+from app.config.constants import LATEST_EXTENSION_VERSION, VERSION
+from app.config.paths import APP_DATA_DIR
 from app.services.task_service import taskService
 
 if TYPE_CHECKING:
     from PySide6.QtWebSockets import QWebSocket
     from app.models.task import Task, TaskOptions, ResourceTaskOptions
+
+EXTENSION_UNPACK_DIR = Path(APP_DATA_DIR) / "browser_extension"
+
+
+async def extractBrowserExtension() -> Path:
+    """Extract the embedded CRX resource to APP_DATA_DIR/browser_extension/."""
+    def _extract() -> Path:
+        resource = QResource(":/res/chrome_extension.crx")
+        crxData = bytes(resource.data())
+
+        headerSize = struct.unpack_from("<I", crxData, 8)[0]
+        zipOffset = 12 + headerSize
+
+        EXTENSION_UNPACK_DIR.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(BytesIO(crxData[zipOffset:])) as zf:
+            zf.extractall(EXTENSION_UNPACK_DIR)
+
+        return EXTENSION_UNPACK_DIR
+
+    return await asyncio.to_thread(_extract)
 
 
 @dataclass
@@ -27,6 +52,8 @@ class BrowserClientSession:
     isAuthenticated: bool = False
     isSubscribedToTasks: bool = False
     lastSnapshot: str | None = None
+    extensionVersion: str = ""
+    installType: str = ""
 
 
 class MessageType(StrEnum):
@@ -41,6 +68,7 @@ class MessageType(StrEnum):
     CREATE_TASK_RESULT = "create_task_result"
     TASK_ACTION = "task_action"
     TASK_ACTION_RESULT = "task_action_result"
+    RELOAD = "reload"
 
 
 class ErrorCode(StrEnum):
@@ -62,7 +90,7 @@ class TaskSource(StrEnum):
     RESOURCE_MERGE = "resource_merge"
 
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 
 def toStr(data: dict, key: str, default: str = "") -> str:
@@ -78,6 +106,8 @@ def toInt(data: dict, key: str, default: int) -> int:
 class BrowserService(QObject):
     pairRequested = Signal(object)
     taskDraftRequested = Signal(list)
+    extensionUpdated = Signal(str)
+    connectionChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -91,12 +121,24 @@ class BrowserService(QObject):
         self._snapshotTimer = QTimer(self)
         self._snapshotTimer.setInterval(1000)
         self._snapshotTimer.timeout.connect(self._broadcastSnapshots)
+        self._isUpdatingExtension = False
 
     @property
     def token(self) -> str:
         if not cfg.browserExtensionPairToken.value:
             cfg.set(cfg.browserExtensionPairToken, token_urlsafe(16))
         return str(cfg.browserExtensionPairToken.value)
+
+    @property
+    def boundPort(self) -> int:
+        return self._server.serverPort() if self._server.isListening() else 0
+
+    @property
+    def connectionSummary(self) -> tuple[str, str]:
+        for session in self._sessions.values():
+            if session.isAuthenticated:
+                return session.installType, session.extensionVersion
+        return "", ""
 
     def regenerateToken(self) -> str:
         token = token_urlsafe(16)
@@ -107,11 +149,13 @@ class BrowserService(QObject):
     def start(self) -> None:
         if self._server.isListening():
             return
-        if self._server.listen(QHostAddress.SpecialAddress.LocalHost, 14370):
-            logger.info("Browser extension server started on port {}", self._server.serverPort())
+        port = cfg.browserExtensionPort.value
+        if self._server.listen(QHostAddress.SpecialAddress.LocalHost, port):
+            logger.info("Browser extension server started on port {}", port)
             self._snapshotTimer.start()
         else:
-            logger.error("Failed to start browser extension server: {}", self._server.errorString())
+            logger.error("Failed to start browser extension server on port {}: {}",
+                         port, self._server.errorString())
 
     def stop(self) -> None:
         self._closeAll()
@@ -186,6 +230,7 @@ class BrowserService(QObject):
             "canOpenFile": outputPath.exists(),
             "canOpenFolder": outputPath.parent.exists(),
             "fileExt": outputPath.suffix.lstrip(".").lower(),
+            "packName": task.packId,
         }
 
     def _closeAll(self) -> None:
@@ -237,8 +282,11 @@ class BrowserService(QObject):
         socket: QWebSocket = self.sender()
         if not socket:
             return
-        self._sessions.pop(id(socket), None)
+        session = self._sessions.pop(id(socket), None)
+        wasAuthenticated = session.isAuthenticated if session else False
         self._deleteSocket(socket)
+        if wasAuthenticated:
+            self.connectionChanged.emit()
 
     @Slot()
     def _broadcastSnapshots(self) -> None:
@@ -328,6 +376,10 @@ class BrowserService(QObject):
             return
 
         session.isAuthenticated = True
+        session.extensionVersion = toStr(data, "extensionVersion")
+        session.installType = toStr(data, "installType")
+        self.connectionChanged.emit()
+
         self._send(session, {
             "type": MessageType.HELLO_ACK,
             "protocolVersion": PROTOCOL_VERSION,
@@ -337,6 +389,30 @@ class BrowserService(QObject):
                 "taskActions": [a.value for a in TaskAction],
             },
         })
+
+        if (session.installType == "development"
+                and QVersionNumber.fromString(session.extensionVersion)[0]
+                    < QVersionNumber.fromString(LATEST_EXTENSION_VERSION)[0]
+                and not self._isUpdatingExtension):
+            self._isUpdatingExtension = True
+            from app.services.coroutine_runner import coroutineRunner
+            coroutineRunner.submit(
+                extractBrowserExtension(),
+                done=self._onExtensionExtracted,
+                failed=self._onExtensionExtractFailed,
+                session=session,
+            )
+
+    def _onExtensionExtracted(self, _path: Path, session: BrowserClientSession) -> None:
+        self._isUpdatingExtension = False
+        if id(session.socket) not in self._sessions:
+            return
+        self._send(session, {"type": MessageType.RELOAD})
+        self.extensionUpdated.emit(LATEST_EXTENSION_VERSION)
+
+    def _onExtensionExtractFailed(self, error: str, **_) -> None:
+        self._isUpdatingExtension = False
+        logger.warning("Browser extension extract failed: {}", error)
 
     def _onCreateTask(self, session: BrowserClientSession, data: dict) -> None:
         from app.services.coroutine_runner import coroutineRunner

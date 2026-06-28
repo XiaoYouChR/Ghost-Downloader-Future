@@ -293,6 +293,8 @@ class TaskService(QObject):
         self._flushTimer.start()
         self.taskFailed.emit(task)
         self._pump()
+        if self._queue.runningCount() == 0:
+            self.tasksAllCompleted.emit()
 
 
 taskService = TaskService()

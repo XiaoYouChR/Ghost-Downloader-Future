@@ -23,6 +23,8 @@ class SpeedMeter(QObject):
 
     def stop(self) -> None:
         self._timer.stop()
+        self._bytes = 0
+        self.speedChanged.emit(0)
 
     def addSpeed(self, byteCount: int) -> None:
         self._bytes += byteCount

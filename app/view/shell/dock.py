@@ -1,7 +1,10 @@
 from PySide6.QtCore import QBuffer, QByteArray, QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetricsF, QPainter, QPixmap
 
-from AppKit import NSApp, NSApplication, NSImage, NSImageView
+from AppKit import (
+    NSApp, NSApplication, NSImage, NSImageView,
+    NSApplicationActivationPolicyRegular, NSApplicationActivationPolicyAccessory,
+)
 from Foundation import NSData
 
 from app.config.cfg import cfg
@@ -9,7 +12,16 @@ from app.format import toReadableSize
 from app.services.speed_meter import speedMeter
 
 
-def setupDockSpeed() -> None:
+def setDockIconVisible(visible: bool, activate: bool) -> None:
+    app = NSApp or NSApplication.sharedApplication()
+    app.setActivationPolicy_(
+        NSApplicationActivationPolicyRegular if visible else NSApplicationActivationPolicyAccessory
+    )
+    if activate:
+        app.activateIgnoringOtherApps_(True)
+
+
+def setupDock() -> None:
     baseIcon = None
     imageView = None
 
@@ -85,5 +97,10 @@ def setupDockSpeed() -> None:
         if not enabled:
             restore()
 
+    def onShowIconChanged(visible: bool) -> None:
+        setDockIconVisible(visible, activate=True)
+        restore()
+
+    cfg.shouldShowDockIcon.valueChanged.connect(onShowIconChanged)
     speedMeter.speedChanged.connect(onSpeedChanged)
     cfg.shouldShowDockSpeed.valueChanged.connect(onShowSpeedChanged)

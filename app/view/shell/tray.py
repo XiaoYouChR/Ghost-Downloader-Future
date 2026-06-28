@@ -9,6 +9,8 @@ from qfluentwidgets import (
     getIconColor, isDarkTheme,
 )
 
+from app.format import toReadableSize
+from app.services.speed_meter import speedMeter
 from app.services.task_service import taskService
 from app.signal_bus import signalBus
 
@@ -147,10 +149,11 @@ else:
 
 
 class SystemTrayIcon(QSystemTrayIcon):
+    NAME = "Ghost Downloader"
 
     def __init__(self, icon: QIcon, parent=None):
         super().__init__(icon, parent)
-        self.setToolTip("Ghost Downloader")
+        self.setToolTip(self.NAME)
 
         self._menu = TrayMenu()
         self._menu.addAction(Action(GhostIcon.GHOST, self.tr("仪表盘"), self._menu,
@@ -167,7 +170,14 @@ class SystemTrayIcon(QSystemTrayIcon):
 
         self.activated.connect(self._onActivated)
         self.messageClicked.connect(signalBus.activationRequested)
+        speedMeter.speedChanged.connect(self._onSpeedChanged)
 
     def _onActivated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             signalBus.activationRequested.emit()
+
+    def _onSpeedChanged(self, speed: int) -> None:
+        if speed > 0:
+            self.setToolTip(f"{self.NAME}\n↓ {toReadableSize(speed)}/s")
+        else:
+            self.setToolTip(self.NAME)

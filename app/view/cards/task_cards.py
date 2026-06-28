@@ -161,7 +161,9 @@ class UniversalTaskCard(TaskCard):
         return bar
 
     def _initWidget(self) -> None:
+        from PySide6.QtWidgets import QSizePolicy
         self.iconLabel.setFixedSize(48, 48)
+        self.nameLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         for btn, tip in (
             (self.verifyHashButton, self.tr("校验文件哈希")),
             (self.openFileButton, self.tr("打开文件")),

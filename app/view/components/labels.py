@@ -65,8 +65,31 @@ class IconBodyLabel(IconLabelBase, BodyLabel):
 class IconStrongBodyLabel(IconLabelBase, StrongBodyLabel):
     def __init__(self, text: str = "", parent=None, size: int = 16) -> None:
         super().__init__(parent)
-        self.setText(text)
+        self._fullText = text
+        super().setText(text)
         self._initIcon(None, size)
+        self.installEventFilter(ToolTipFilter(self))
+
+    def text(self) -> str:
+        return self._fullText
+
+    def setText(self, text: str) -> None:
+        self._fullText = text
+        self._elide()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self) -> None:
+        width = self.contentsRect().width() - self.indent()
+        if width > 0:
+            elided = self.fontMetrics().elidedText(
+                self._fullText, Qt.TextElideMode.ElideRight, width)
+        else:
+            elided = self._fullText
+        super().setText(elided)
+        self.setToolTip(self._fullText if elided != self._fullText else "")
 
 
 class EditableLabel(StrongBodyLabel):

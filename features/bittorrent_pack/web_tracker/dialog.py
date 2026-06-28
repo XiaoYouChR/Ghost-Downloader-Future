@@ -72,7 +72,7 @@ class WebTrackerDialog(MessageBoxBase):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.sourceHeaderLabel = SubtitleLabel(self.tr("Tracker 源"), self.widget)
-        self.addSourceButton = PrimaryPushButton(FluentIcon.ADD, "添加", self.widget)
+        self.addSourceButton = PrimaryPushButton(FluentIcon.ADD, self.tr("添加"), self.widget)
         self.sourceContainer = QWidget(self.widget)
         self.customLabel = SubtitleLabel(self.tr("自定义 Tracker"), self.widget)
         self.customEdit = AutoSizingEdit(self.widget)
@@ -93,7 +93,7 @@ class WebTrackerDialog(MessageBoxBase):
             t for t in customText.split()
             if urlsplit(t).scheme.lower() in TRACKER_SCHEMES and urlsplit(t).netloc
         ]
-        self.customEdit.setPlaceholderText("每行一个 tracker URL，不会被源刷新覆盖")
+        self.customEdit.setPlaceholderText(self.tr("每行一个 tracker URL，不会被源刷新覆盖"))
         self.customEdit.setPlainText("\n".join(customTrackers))
         for url in list(bittorrentConfig.webTrackerSources.value):
             self._addSourceCard(url)

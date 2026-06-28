@@ -51,7 +51,7 @@ class BTSession(QObject):
             "listen_interfaces": f"0.0.0.0:{bittorrentConfig.listenPort.value}",
             "connections_limit": bittorrentConfig.maxConnections.value,
             "download_rate_limit": self._downloadLimit(),
-            "upload_rate_limit": bittorrentConfig.maxUploadSpeed.value,
+            "upload_rate_limit": int(bittorrentConfig.maxUploadSpeed.value),
             "enable_dht": bittorrentConfig.enableDht.value,
             "enable_lsd": bittorrentConfig.enableLsd.value,
             "announce_to_all_trackers": True,
@@ -154,7 +154,7 @@ class BTSession(QObject):
             return
         self._session.apply_settings({
             "download_rate_limit": self._downloadLimit(),
-            "upload_rate_limit": bittorrentConfig.maxUploadSpeed.value,
+            "upload_rate_limit": int(bittorrentConfig.maxUploadSpeed.value),
             "connections_limit": bittorrentConfig.maxConnections.value,
         })
 
@@ -170,7 +170,7 @@ class BTSession(QObject):
     def _downloadLimit(self) -> int:
         if not cfg.isSpeedLimitEnabled.value:
             return 0
-        return cfg.speedLimitation.value
+        return int(cfg.speedLimitation.value)
 
     def _proxySettings(self) -> dict:
         url = proxy()

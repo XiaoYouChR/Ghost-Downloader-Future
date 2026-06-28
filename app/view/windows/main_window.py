@@ -49,7 +49,6 @@ class MainWindow(MSFluentWindow):
         self.setMinimumSize(960, 540)
         if sys.platform == "darwin":
             self.titleBar.hBoxLayout.insertSpacing(0, 60)
-        self._refreshThemeColor()
 
     def _initLayout(self) -> None:
         self._addPage(TaskPage, FluentIcon.DOWNLOAD, self.tr("下载任务"),
@@ -96,7 +95,12 @@ class MainWindow(MSFluentWindow):
             page.setObjectName(routeKey)
             self.stackedWidget.addWidget(page)
             self._pages[routeKey] = page
+            if self.stackedWidget.count() == 1:
+                from qfluentwidgets.common import qrouter
+                self.stackedWidget.currentChanged.connect(self._onCurrentInterfaceChanged)
+                qrouter.setDefaultRouteKey(self.stackedWidget, routeKey)
         self.switchTo(page)
+        self.navigationInterface.setCurrentItem(routeKey)
 
     def _bind(self) -> None:
         self._draft.taskConfirmed.connect(taskService.add)
@@ -292,12 +296,12 @@ class MainWindow(MSFluentWindow):
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
         if event.type() == QEvent.Type.PaletteChange:
-            self._refreshThemeColor()
+            self.refreshThemeColor()
         if self._isBackgroundEffectDirty and event.type() == QEvent.Type.ThemeChange:
             self._isBackgroundEffectDirty = False
             self._refreshBackgroundEffect()
 
-    def _refreshThemeColor(self) -> None:
+    def refreshThemeColor(self) -> None:
         palette = QApplication.palette()
         for role in (QPalette.ColorRole.Accent, QPalette.ColorRole.Highlight):
             color = palette.color(role)

@@ -1,4 +1,3 @@
-"""qfluentwidgets 单例会按「窗口永生」假设持有 widget；窗口可死后需补偿。与库内部结构耦合。"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -8,17 +7,15 @@ if TYPE_CHECKING:
 
 
 def patchFluentLabelThemeChanged() -> None:
-    from qfluentwidgets.components.widgets import label as fluentLabelModule
+    from qfluentwidgets.components.widgets import label
 
-    FluentLabelBase = fluentLabelModule.FluentLabelBase
-    if getattr(FluentLabelBase, "_gdThemeChangedPatched", False):
-        return
+    FluentLabelBase = label.FluentLabelBase
 
     def _init(self):
-        fluentLabelModule.FluentStyleSheet.LABEL.apply(self)
+        label.FluentStyleSheet.LABEL.apply(self)
         self.setFont(self.getFont())
         self.setTextColor()
-        fluentLabelModule.qconfig.themeChanged.connect(self._applyThemeColor)
+        label.qconfig.themeChanged.connect(self._applyThemeColor)
         self.customContextMenuRequested.connect(self._onContextMenuRequested)
         return self
 
@@ -27,7 +24,6 @@ def patchFluentLabelThemeChanged() -> None:
 
     FluentLabelBase._init = _init
     FluentLabelBase._applyThemeColor = _applyThemeColor
-    FluentLabelBase._gdThemeChangedPatched = True
 
 
 def unregisterRouter(stacked: QStackedWidget) -> None:

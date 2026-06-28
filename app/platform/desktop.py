@@ -51,6 +51,52 @@ def restart() -> None:
             Popen(["shutdown", "-r", "now"])
 
 
+_CHROMIUM_APPS_MACOS = ["Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium"]
+_CHROMIUM_BINS_LINUX = [
+    "google-chrome", "google-chrome-stable",
+    "microsoft-edge-stable", "microsoft-edge",
+    "brave-browser",
+    "chromium-browser", "chromium",
+]
+_CHROMIUM_APPS_WIN = ["chrome.exe", "msedge.exe", "brave.exe", "chromium.exe"]
+
+
+def openChromiumUrl(url: str) -> bool:
+    import shutil
+    import subprocess
+
+    match sys.platform:
+        case "darwin":
+            for app in _CHROMIUM_APPS_MACOS:
+                if subprocess.run(
+                    ["open", "-a", app, url], capture_output=True
+                ).returncode == 0:
+                    return True
+        case "win32":
+            import winreg
+            for exe in _CHROMIUM_APPS_WIN:
+                try:
+                    with winreg.OpenKey(
+                        winreg.HKEY_LOCAL_MACHINE,
+                        rf"Software\Microsoft\Windows\CurrentVersion\App Paths\{exe}",
+                    ) as key:
+                        path = winreg.QueryValue(key, None)
+                        if path and Path(path).is_file():
+                            subprocess.Popen([path, url])
+                            return True
+                except OSError:
+                    continue
+        case _:
+            for cmd in _CHROMIUM_BINS_LINUX:
+                if shutil.which(cmd):
+                    try:
+                        subprocess.Popen([cmd, url])
+                        return True
+                    except OSError:
+                        continue
+    return False
+
+
 def raiseWindow(window) -> None:
     window.show()
     window.setWindowState(

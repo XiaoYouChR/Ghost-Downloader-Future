@@ -167,7 +167,7 @@ class M3U8TaskStep(TaskStep):
         if self.maxSpeed > 0:
             args.append(f"--max-speed={self.maxSpeed}{self.speedUnit}")
         elif cfg.isSpeedLimitEnabled.value:
-            args.append(f"--max-speed={cfg.speedLimitation.value}Bps")
+            args.append(f"--max-speed={int(cfg.speedLimitation.value)}Bps")
         if self.adKeyword:
             args.append(f"--ad-keyword={self.adKeyword}")
         if self.shouldOmitDateInfo:

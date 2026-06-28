@@ -47,7 +47,7 @@ class SpinBoxSettingCard(SettingCard):
         return super().eventFilter(watched, event)
 
     def leaveEvent(self, event):
-        cfg.set(self._configItem, self.spinBox.value() / self._division)
+        cfg.set(self._configItem, int(self.spinBox.value() / self._division))
 
 
 class LineEditSettingCard(SettingCard):
@@ -113,9 +113,9 @@ class ProxySettingCard(ExpandGroupSettingCard):
         bannerIcon = IconWidget(FluentIcon.INFO, self.compatBanner)
         bannerIcon.setFixedSize(16, 16)
         bannerLayout.addWidget(bannerIcon)
-        bannerLayout.addWidget(CaptionLabel(
-            self.tr("当前代理类型可能不适用于所有下载方式，SOCKS5 可兼容全部"), self.compatBanner,
-        ), 1)
+        self._compatLabel = CaptionLabel("", self.compatBanner)
+        self._compatLabel.setWordWrap(True)
+        bannerLayout.addWidget(self._compatLabel, 1)
 
         self._initLayout()
 
@@ -212,10 +212,18 @@ class ProxySettingCard(ExpandGroupSettingCard):
             scheme = "socks5"
         if scheme:
             from app.services.feature_service import featureService
-            self.compatBanner.setVisible(any(
-                p.proxySchemes is not None and scheme not in p.proxySchemes
-                for p in featureService.packs
-            ))
+            incompatible = [
+                p.packId.upper() for p in featureService.packs
+                if p.proxySchemes is not None and scheme not in p.proxySchemes
+            ]
+            if incompatible:
+                names = "、".join(incompatible)
+                self._compatLabel.setText(
+                    self.tr("{0} 不支持当前代理协议，建议使用 SOCKS5 以兼容全部下载方式").format(names)
+                )
+                self.compatBanner.show()
+            else:
+                self.compatBanner.hide()
         else:
             self.compatBanner.hide()
 
@@ -479,6 +487,13 @@ class RuntimeCard(SettingCard):
             card = cardRef()
             if card is not None and isValid(card):
                 card.installButton.setEnabled(True)
+                InfoBar.success(
+                    card.tr("安装任务已创建"),
+                    card.tr("请前往任务页查看安装进度"),
+                    duration=3000,
+                    position=InfoBarPosition.TOP,
+                    parent=card.window(),
+                )
 
         def onFailed(error: str) -> None:
             from shiboken6 import isValid
