@@ -72,7 +72,7 @@ def startApp(application, isSilent=False):
 
     featureService.load()
     window.setupPacks()
-    window.refreshThemeColor()
+    window.refreshThemeColor()  #  Feature Pack Config 加载结构问题导致的深层问题
 
     taskService.taskStarted.connect(lambda _: speedMeter.start())
     taskService.tasksAllCompleted.connect(speedMeter.stop)
