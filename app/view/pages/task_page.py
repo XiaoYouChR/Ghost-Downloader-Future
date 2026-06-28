@@ -141,7 +141,7 @@ class TaskPage(QWidget):
         self.selectButton = ToolButton(FluentIcon.CLEAR_SELECTION, self.toolBar)
         self.planButton = ToggleToolButton(FluentIcon.DATE_TIME, self.toolBar)
         self.rateLimitButton = ToggleToolButton(FluentIcon.SPEED_OFF, self.toolBar)
-        self.speedBadge = IconBodyLabel(self.tr("0.00KB/s"), FluentIcon.SPEED_HIGH, self.toolBar)
+        self.speedBadge = IconBodyLabel("0.00B/s", FluentIcon.SPEED_HIGH, self.toolBar)
         self.sortButton = DropDownToolButton(FluentIcon.LAYOUT, self.toolBar)
         self.filterButton = DropDownToolButton(FluentIcon.FILTER, self.toolBar)
         self.categoryFilterButton = DropDownToolButton(FluentIcon.TAG, self.toolBar)
