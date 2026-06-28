@@ -1,18 +1,17 @@
 /*
  * Ghost Downloader — "download this media" overlay (ISOLATED world).
- * A floating button that locates the active <video> and asks the page-media controller
- * (window.__gd3PageMedia) to resolve the right stream, then hands it to the background.
+ * A floating button that locates the active <video> and asks the page-media attribution
+ * engine (window.__gd3PageMedia) to resolve the right stream, then hands it to the background.
  * Built as a standalone IIFE bundle (see scripts/build.mjs).
  */
-import type {VideoSessionState} from "./types";
+import {findActiveMedia} from "./active-media";
+import type {VideoSessionState} from "../types";
 
 declare global {
   interface Window {
     GhostDownloaderMediaButton?: { installed: boolean };
   }
 }
-
-type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
 
 (function installGhostDownloaderMediaButton() {
   if (window.GhostDownloaderMediaButton?.installed) { return; }
@@ -23,6 +22,7 @@ type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
   let resetTimer = 0;
   let updateQueued = false;
   let enabled = false;
+  let positionTimer = 0;
 
   host.id = "ghostDownloaderMediaDownload";
   Object.assign(host.style, {
@@ -89,34 +89,6 @@ type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
   const label = root.querySelector(".label")!;
   const status = root.querySelector(".status")!;
 
-  function mediaRect(media: HTMLVideoElement): DOMRect | null {
-    const rect = media.getBoundingClientRect();
-    if (rect.width < 120 || rect.height < 80 || rect.bottom <= 0 || rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) {
-      return null;
-    }
-    return rect;
-  }
-
-  // Digit slots: playing (1e9) beats readyState (1e6) beats viewport area, so the user's
-  // active video always wins over a paused full-screen poster.
-  function mediaScore(media: HTMLVideoElement, rect: DOMRect): number {
-    const playing = !media.paused && !media.ended ? 1_000_000_000 : 0;
-    return playing + media.readyState * 1_000_000 + rect.width * rect.height;
-  }
-
-  function findActiveMedia(): ActiveMedia | null {
-    let selected: ActiveMedia | null = null;
-    for (const media of Array.from(document.querySelectorAll<HTMLVideoElement>("video"))) {
-      const rect = mediaRect(media);
-      if (!rect) { continue; }
-      const score = mediaScore(media, rect);
-      if (!selected || score > selected.score) {
-        selected = { media, rect, score };
-      }
-    }
-    return selected;
-  }
-
   function updatePosition(): void {
     updateQueued = false;
     if (!enabled) {
@@ -158,12 +130,17 @@ type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
       document.documentElement.appendChild(host);
     }
     scheduleUpdate();
+    positionTimer = window.setInterval(scheduleUpdate, 1000);
   }
 
   function disableOverlay(): void {
     enabled = false;
     host.style.display = "none";
     host.remove();
+    if (positionTimer) {
+      clearInterval(positionTimer);
+      positionTimer = 0;
+    }
   }
 
   function scheduleUpdate(): void {
@@ -177,7 +154,7 @@ type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
     status.className = failed ? "status error" : "status";
     clearTimeout(resetTimer);
     if (text && !failed) {
-      // Matches TERMINAL_RESET_MS in controller.ts so toast fade and button re-enable line up.
+      // Matches TERMINAL_RESET_MS in attribution.ts so toast fade and button re-enable line up.
       resetTimer = window.setTimeout(() => { status.textContent = ""; }, 1600);
     }
   }
@@ -203,7 +180,7 @@ type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
     label.textContent = "正在解析";
     setStatus("");
 
-    // Mirror controller state on the button so the user sees a "waiting" beat instead of staring at "正在解析".
+    // Mirror attribution state on the button so the user sees a "waiting" beat instead of staring at "正在解析".
     const onState = (next: VideoSessionState) => {
       if (next === "waiting") { label.textContent = "等待资源…"; }
       else if (next === "resolving" || next === "dispatched") { label.textContent = "正在发送"; }
@@ -254,15 +231,14 @@ type ActiveMedia = { media: HTMLVideoElement; rect: DOMRect; score: number };
   document.addEventListener("play", scheduleUpdate, true);
   document.addEventListener("pause", scheduleUpdate, true);
   document.addEventListener("loadedmetadata", scheduleUpdate, true);
-  setInterval(scheduleUpdate, 1000);
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== "media_download_overlay_set_enabled") { return; }
+    if (message?.type !== "media_button_set_enabled") { return; }
     Boolean(message.enabled) ? enableOverlay() : disableOverlay();
     sendResponse({ ok: true });
   });
 
-  chrome.runtime.sendMessage({ type: "page_media_overlay_state" }, (result) => {
+  chrome.runtime.sendMessage({ type: "page_media_button_state" }, (result) => {
     const lastError = chrome.runtime.lastError;
     if (!lastError && result?.enabled === false) {
       disableOverlay();

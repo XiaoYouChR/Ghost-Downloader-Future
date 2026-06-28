@@ -106,13 +106,13 @@ def startApp(application, isSilent=False):
         raiseWindow(window)
         return window
 
-    def onBrowserDraft(tasks):
+    def onBrowserDraft(payload):
         nonlocal window
         if window is None:
             window = MainWindow()
             window.setupPacks()
             window.destroyed.connect(onWindowDestroyed)
-        window.addTasks(tasks)
+        window.addTasks(payload["tasks"], draftId=payload.get("draftId"))
 
     signalBus.activationRequested.connect(show)
     signalBus.openFileRequested.connect(lambda uris: show().addUrls(uris))

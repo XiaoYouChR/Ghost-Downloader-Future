@@ -10,21 +10,21 @@ export type TabMessageResult<T> = {
 // has no chrome.storage.session, so fall back to local.
 const bridgeStorage = chrome.storage.session ?? chrome.storage.local;
 
-export async function loadFromLocalStorage<T extends Record<string, unknown>>(defaults: T): Promise<T> {
+export async function loadLocalState<T extends Record<string, unknown>>(defaults: T): Promise<T> {
   const items = await chrome.storage.local.get(defaults);
   return items as T;
 }
 
-export async function localStorageSet(values: Record<string, unknown>): Promise<void> {
+export async function saveLocalState(values: Record<string, unknown>): Promise<void> {
   await chrome.storage.local.set(values);
 }
 
-export async function loadFromBridgeStorage<T extends Record<string, unknown>>(defaults: T): Promise<T> {
+export async function loadSessionState<T extends Record<string, unknown>>(defaults: T): Promise<T> {
   const items = await bridgeStorage.get(defaults);
   return items as T;
 }
 
-export async function bridgeStorageSet(values: Record<string, unknown>): Promise<void> {
+export async function saveSessionState(values: Record<string, unknown>): Promise<void> {
   await bridgeStorage.set(values);
 }
 

@@ -10,8 +10,7 @@ import {
 
 import type {TaskSummary, TaskAction} from "../../shared/types";
 import {formatBytes, formatTaskMetric, formatTaskStatus, taskActionLabel, taskVisual,} from "../../shared/utils";
-import {taskStatusToBadgeColor, taskStatusToBadgeIcon} from "../lib/fluent";
-import {visualIcon} from "../lib/presenters";
+import {taskStatusToBadgeColor, taskStatusToBadgeIcon, visualIcon,} from "../fluent";
 
 const useStyles = makeStyles({
   root: {

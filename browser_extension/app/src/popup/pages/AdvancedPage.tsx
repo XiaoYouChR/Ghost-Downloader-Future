@@ -1,9 +1,9 @@
 import {Body1Strong, makeStyles, MessageBar, MessageBarBody, MessageBarTitle} from "@fluentui/react-components";
 
 import {ADVANCED_FEATURES} from "../../shared/constants";
-import type {AdvancedFeatureKey, FeatureStateMap, MediaItemOption, MediaPlaybackState,} from "../../shared/types";
-import {FeatureToggleCard} from "./FeatureToggleCard";
-import {MediaControlPanel} from "./MediaControlPanel";
+import type {AdvancedFeatureKey, FeatureStateMap, MediaAction, MediaItemOption, MediaPlaybackState,} from "../../shared/types";
+import {FeatureToggleCard} from "../components/FeatureToggleCard";
+import {MediaControlPanel} from "../components/MediaControlPanel";
 
 const useStyles = makeStyles({
   root: {
@@ -41,7 +41,7 @@ export function AdvancedPage({
   mediaPlaybackState: MediaPlaybackState;
   mediaBusy?: boolean;
   onMediaItemChange: (index: number) => void;
-  onMediaAction: (action: string, value?: number | boolean) => void;
+  onMediaAction: (action: MediaAction, value?: number | boolean) => void;
 }) {
   const styles = useStyles();
   return (

@@ -1,10 +1,10 @@
-import {isCatCatchMedia} from "../shared/cat-catch";
-import {fileExtension, filenameFromUrl, mimeFromUrl} from "../shared/utils";
+import {isCatCatchMedia} from "../../shared/cat-catch";
+import {fileExtension, filenameFromUrl, mimeFromUrl} from "../../shared/utils";
 
 import {AttributionLedger} from "./attribution-ledger";
-import {selectMediaForPage} from "./strategy";
-import {isMediaSignal} from "./signals";
-import type {AttributedUrlView, FindUrlsByIdHint, SessionSnapshot, ResolveContext, ResolveHints} from "./strategy";
+import {selectMediaForPage} from "../resolution/strategy";
+import {isMediaSignal} from "./attribution-signal";
+import type {AttributedUrlView, FindUrlsByIdHint, SessionSnapshot, ResolveContext, ResolveHints} from "../resolution/strategy";
 import type {
   AttributionTier,
   MseAttributionSignal,
@@ -13,13 +13,13 @@ import type {
   VideoSessionFormKind,
   AttributedUrlMeta,
   VideoSessionState,
-} from "./types";
+} from "../types";
 
 const LOG_PREFIX = "[GD3 Media]";
 const VIDEO_ID_QUERY_KEYS = ["__vid", "v", "modal_id", "video_id", "id", "bvid", "aid"];
 // Budget from the FIRST Pending — not per re-eval.
 const WAIT_FOR_TIMEOUT_MS = 8000;
-// Matches the overlay status toast — auto-reset and toast fade on the same clock.
+// Matches the download-button status toast — auto-reset and toast fade on the same clock.
 const TERMINAL_RESET_MS = 1600;
 
 type ResolveStateListener = (state: VideoSessionState, reason: string) => void;
@@ -76,7 +76,7 @@ function toFormKind(mimeTypes: Set<string>): VideoSessionFormKind {
   return hasVideo && hasAudio ? "dash" : "unknown";
 }
 
-// A per-site strategy bubbling its exception to the overlay would crash the click pipeline.
+// A per-site strategy bubbling its exception to the download button would crash the click pipeline.
 function trySelect(ctx: ResolveContext, findUrlsByIdHint: FindUrlsByIdHint): Resolution {
   try {
     return selectMediaForPage(ctx, findUrlsByIdHint);
@@ -103,7 +103,7 @@ function toSessionSnapshot(session: VideoSession): SessionSnapshot {
 }
 
 
-class PageMediaController {
+class MediaAttribution {
   private readonly elementsWithListeners = new WeakSet<HTMLMediaElement>();
   private readonly sessionsByElement = new WeakMap<HTMLMediaElement, VideoSession>();
   private readonly sessionsById = new Map<string, VideoSession>();
@@ -135,7 +135,7 @@ class PageMediaController {
     }
 
     window.addEventListener("message", this.onMessage);
-    console.log(`${LOG_PREFIX} controller started in frame ${location.href}`);
+    console.log(`${LOG_PREFIX} attribution started in frame ${location.href}`);
   }
 
   private onMutations = (mutations: MutationRecord[]): void => {
@@ -646,17 +646,17 @@ declare global {
   }
 }
 
-let controllerInstance: PageMediaController | null = null;
+let attributionInstance: MediaAttribution | null = null;
 
-export function startPageMediaController(): void {
-  if (controllerInstance) { return; }
-  controllerInstance = new PageMediaController();
-  controllerInstance.start();
+export function startMediaAttribution(): void {
+  if (attributionInstance) { return; }
+  attributionInstance = new MediaAttribution();
+  attributionInstance.start();
   window.__gd3PageMedia = {
-    attributedUrlsForElement: (element) => controllerInstance?.attributedUrlsFor(element) ?? [],
+    attributedUrlsForElement: (element) => attributionInstance?.attributedUrlsFor(element) ?? [],
     selectMediaForElement: (element, hints, onStateChange) =>
-      controllerInstance?.selectMediaForElement(element, hints, onStateChange) ?? Promise.resolve({ kind: "refused" as const, message: "controller not ready" }),
+     attributionInstance?.selectMediaForElement(element, hints, onStateChange) ?? Promise.resolve({ kind: "refused" as const, message: "attribution not ready" }),
     markDispatchResult: (element, ok, message) =>
-      controllerInstance?.markDispatchResult(element, ok, message),
+      attributionInstance?.markDispatchResult(element, ok, message),
   };
 }

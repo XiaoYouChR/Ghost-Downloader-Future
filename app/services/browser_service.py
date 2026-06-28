@@ -54,6 +54,7 @@ class BrowserClientSession:
     lastSnapshot: str | None = None
     extensionVersion: str = ""
     installType: str = ""
+    clientKind: str = ""
 
 
 class MessageType(StrEnum):
@@ -68,6 +69,8 @@ class MessageType(StrEnum):
     CREATE_TASK_RESULT = "create_task_result"
     TASK_ACTION = "task_action"
     TASK_ACTION_RESULT = "task_action_result"
+    TASK_DRAFT_CONFIRMED = "task_draft_confirmed"
+    TASK_DRAFT_CANCELLED = "task_draft_cancelled"
     RELOAD = "reload"
 
 
@@ -86,11 +89,19 @@ class TaskAction(StrEnum):
 
 
 class TaskSource(StrEnum):
+    DOWNLOAD = "download"
     RESOURCE = "resource"
     RESOURCE_MERGE = "resource_merge"
+    PAGE_MEDIA = "page_media"
 
 
-PROTOCOL_VERSION = 2
+class CreateTaskStatus(StrEnum):
+    CREATED = "created"
+    DRAFTED = "drafted"
+    REJECTED = "rejected"
+
+
+PROTOCOL_VERSION = 3
 
 
 def toStr(data: dict, key: str, default: str = "") -> str:
@@ -105,7 +116,7 @@ def toInt(data: dict, key: str, default: int) -> int:
 
 class BrowserService(QObject):
     pairRequested = Signal(object)
-    taskDraftRequested = Signal(list)
+    taskDraftRequested = Signal(object)
     extensionUpdated = Signal(str)
     connectionChanged = Signal()
 
@@ -118,6 +129,7 @@ class BrowserService(QObject):
         )
         self._server.newConnection.connect(self._onNewConnection)
         self._sessions: dict[int, BrowserClientSession] = {}
+        self._drafts: dict[str, tuple[BrowserClientSession, str]] = {}
         self._snapshotTimer = QTimer(self)
         self._snapshotTimer.setInterval(1000)
         self._snapshotTimer.timeout.connect(self._broadcastSnapshots)
@@ -180,6 +192,27 @@ class BrowserService(QObject):
             "message": "已拒绝配对请求",
         })
 
+    def confirmDraft(self, draftId: str, taskId: str) -> None:
+        entry = self._drafts.pop(draftId, None)
+        if entry is None:
+            return
+        session, _ = entry
+        self._send(session, {
+            "type": MessageType.TASK_DRAFT_CONFIRMED,
+            "draftId": draftId,
+            "taskId": taskId,
+        })
+
+    def cancelDraft(self, draftId: str) -> None:
+        entry = self._drafts.pop(draftId, None)
+        if entry is None:
+            return
+        session, _ = entry
+        self._send(session, {
+            "type": MessageType.TASK_DRAFT_CANCELLED,
+            "draftId": draftId,
+        })
+
     def _toResourceTaskOptions(self, resource: dict) -> ResourceTaskOptions:
         from app.models.task import ResourceTaskOptions
         return ResourceTaskOptions(
@@ -190,29 +223,38 @@ class BrowserService(QObject):
             headers=resource.get("headers") or {},
         )
 
-    def _toTaskOptions(self, source: str, payload: dict) -> TaskOptions:
+    def _toTaskOptions(self, source: TaskSource, payload: dict) -> TaskOptions:
         from dataclasses import replace
-        from app.models.task import MergeTaskOptions
+        from app.models.task import MergeTaskOptions, PageTaskOptions
 
         rawPath = payload.get("path")
         outputFolder = Path(rawPath) if rawPath else Path(cfg.downloadFolder.value)
 
-        if source == TaskSource.RESOURCE_MERGE:
-            resources = payload.get("resources") or []
-            video = self._toResourceTaskOptions(resources[0]) if len(resources) > 0 else None
-            audio = self._toResourceTaskOptions(resources[1]) if len(resources) > 1 else None
-            return MergeTaskOptions(
-                url=video.url if video else "",
-                outputFolder=outputFolder,
-                video=video,
-                audio=audio,
-            )
-
-        return replace(
-            self._toResourceTaskOptions(payload),
-            outputFolder=outputFolder,
-            subworkerCount=toInt(payload, "preBlockNum", cfg.preBlockNum.value),
-        )
+        match source:
+            case TaskSource.RESOURCE_MERGE:
+                resources = payload.get("resources") or []
+                video = self._toResourceTaskOptions(resources[0]) if len(resources) > 0 else None
+                audio = self._toResourceTaskOptions(resources[1]) if len(resources) > 1 else None
+                return MergeTaskOptions(
+                    url=video.url if video else "",
+                    outputFolder=outputFolder,
+                    video=video,
+                    audio=audio,
+                )
+            case TaskSource.PAGE_MEDIA:
+                return PageTaskOptions(
+                    url=toStr(payload, "url"),
+                    outputFolder=outputFolder,
+                    pageUrl=toStr(payload, "pageUrl"),
+                    pageTitle=toStr(payload, "pageTitle"),
+                    headers=payload.get("headers") or {},
+                )
+            case TaskSource.RESOURCE | TaskSource.DOWNLOAD:
+                return replace(
+                    self._toResourceTaskOptions(payload),
+                    outputFolder=outputFolder,
+                    subworkerCount=toInt(payload, "preBlockNum", cfg.preBlockNum.value),
+                )
 
     def _toTaskSummary(self, task: Task) -> dict:
         progress, speed, receivedBytes = task.currentSnapshot()
@@ -238,6 +280,7 @@ class BrowserService(QObject):
             session.socket.close()
             self._deleteSocket(session.socket)
         self._sessions.clear()
+        self._drafts.clear()
 
     def _deleteSocket(self, socket: QWebSocket) -> None:
         try:
@@ -268,6 +311,23 @@ class BrowserService(QObject):
             payload["taskId"] = taskId
         self._send(session, payload)
 
+    def _sendCreateTaskResult(self, session: BrowserClientSession, requestId: str,
+                              status: CreateTaskStatus, *,
+                              taskId: str = "", draftId: str = "",
+                              message: str = "") -> None:
+        payload: dict[str, Any] = {
+            "type": MessageType.CREATE_TASK_RESULT,
+            "requestId": requestId,
+            "status": status,
+        }
+        if taskId:
+            payload["taskId"] = taskId
+        if draftId:
+            payload["draftId"] = draftId
+        if message:
+            payload["message"] = message
+        self._send(session, payload)
+
     @Slot()
     def _onNewConnection(self) -> None:
         socket = self._server.nextPendingConnection()
@@ -284,6 +344,9 @@ class BrowserService(QObject):
             return
         session = self._sessions.pop(id(socket), None)
         wasAuthenticated = session.isAuthenticated if session else False
+        if session:
+            for draftId in [d for d, (s, _) in self._drafts.items() if s is session]:
+                self._drafts.pop(draftId, None)
         self._deleteSocket(socket)
         if wasAuthenticated:
             self.connectionChanged.emit()
@@ -378,6 +441,7 @@ class BrowserService(QObject):
         session.isAuthenticated = True
         session.extensionVersion = toStr(data, "extensionVersion")
         session.installType = toStr(data, "installType")
+        session.clientKind = toStr(data, "clientKind")
         self.connectionChanged.emit()
 
         self._send(session, {
@@ -420,7 +484,7 @@ class BrowserService(QObject):
 
         requestId = toStr(data, "requestId")
         payload = data.get("payload")
-        source = toStr(data, "source", TaskSource.RESOURCE)
+        rawSource = toStr(data, "source", TaskSource.RESOURCE)
         title = toStr(data, "title")
 
         if not requestId or not isinstance(payload, dict):
@@ -428,33 +492,48 @@ class BrowserService(QObject):
             return
 
         try:
+            source = TaskSource(rawSource)
+        except ValueError:
+            self._sendError(session, "未知的任务来源")
+            return
+
+        try:
             options = self._toTaskOptions(source, payload)
         except Exception as e:
-            self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=False, message=repr(e))
+            self._sendCreateTaskResult(session, requestId, CreateTaskStatus.REJECTED, message=repr(e))
             return
 
         coroutineRunner.submit(
             featureService.parse(options),
             done=self._onTaskParsed,
             failed=self._onTaskParseFailed,
-            session=session, requestId=requestId, title=title,
+            session=session, requestId=requestId, source=source, title=title,
         )
 
-    def _onTaskParsed(self, task: Task, session: BrowserClientSession, requestId: str, title: str) -> None:
+    def _onTaskParsed(self, task: Task, session: BrowserClientSession, requestId: str,
+                      source: TaskSource, title: str) -> None:
         if title:
             task.setName(title)
 
-        if cfg.shouldRaiseWindowOnBrowserTask.value:
-            self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=False)
-            self.taskDraftRequested.emit([task])
+        isInteractive = source != TaskSource.DOWNLOAD
+        if isInteractive and cfg.shouldRaiseWindowOnBrowserTask.value:
+            draftId = f"draft_{token_urlsafe(8)}"
+            self._drafts[draftId] = (session, requestId)
+            self._sendCreateTaskResult(session, requestId, CreateTaskStatus.DRAFTED, draftId=draftId)
+            self.taskDraftRequested.emit({
+                "tasks": [task],
+                "draftId": draftId,
+                "session": session,
+                "requestId": requestId,
+            })
             return
 
         taskService.add(task)
-        self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=True, taskId=task.taskId)
+        self._sendCreateTaskResult(session, requestId, CreateTaskStatus.CREATED, taskId=task.taskId)
         self._broadcastSnapshots()
 
     def _onTaskParseFailed(self, error: str, session: BrowserClientSession, requestId: str, **_) -> None:
-        self._sendResult(session, MessageType.CREATE_TASK_RESULT, requestId, ok=False, message=error)
+        self._sendCreateTaskResult(session, requestId, CreateTaskStatus.REJECTED, message=error)
 
     def _onTaskAction(self, session: BrowserClientSession, data: dict) -> None:
         from app.models.task import TaskStatus
@@ -517,6 +596,7 @@ class BrowserService(QObject):
                 openFolder(path)
 
             self._sendResult(session, MessageType.TASK_ACTION_RESULT, requestId, ok=True)
+            self._broadcastSnapshots()
 
         except Exception as e:
             logger.opt(exception=e).error("Browser task action failed")

@@ -1,5 +1,15 @@
 export type PopupView = "tasks" | "resources" | "advanced" | "settings";
 export type TaskAction = "toggle_pause" | "redownload" | "open_file" | "open_folder" | "cancel";
+export type MediaAction =
+  | "toggle_play"
+  | "set_speed"
+  | "pip"
+  | "screenshot"
+  | "toggle_loop"
+  | "toggle_muted"
+  | "set_volume"
+  | "set_time"
+  | "fullscreen";
 export type ThemePreference = "system" | "light" | "dark";
 
 export type DesktopConnectionState =
@@ -38,7 +48,7 @@ export interface TaskSummary {
   packName: string;
 }
 
-export interface CapturedResource {
+export interface Resource {
   id: string;
   tabId: number;
   url: string;
@@ -75,7 +85,7 @@ export interface MediaItemOption {
 }
 
 export interface MediaPlaybackState {
-  available: boolean;
+  isAvailable: boolean;
   message: string;
   tabId: number | null;
   mediaIndex: number;
@@ -83,9 +93,9 @@ export interface MediaPlaybackState {
   duration: number;
   progress: number;
   volume: number;
-  paused: boolean;
-  loop: boolean;
-  muted: boolean;
+  isPaused: boolean;
+  shouldLoop: boolean;
+  isMuted: boolean;
   speed: number;
 }
 
@@ -95,14 +105,14 @@ export interface PopupState {
   desktopVersion: string;
   token: string;
   serverUrl: string;
-  interceptDownloads: boolean;
-  mediaDownloadOverlayEnabled: boolean;
+  shouldTakeDownloads: boolean;
+  isMediaButtonEnabled: boolean;
   tasks: TaskSummary[];
   taskCounters: TaskCounters;
   resourceState: ResourceCollectionState;
   resourceStateMessage: string;
-  currentResources: CapturedResource[];
-  otherResources: CapturedResource[];
+  currentResources: Resource[];
+  otherResources: Resource[];
   tabId: number | null;
   activePageDomain: string;
   featureStates: FeatureStateMap;
@@ -110,8 +120,10 @@ export interface PopupState {
   mediaPlaybackState: MediaPlaybackState;
 }
 
-export interface DesktopRequestResult {
+export interface CommandResult {
   ok: boolean;
   message?: string;
   taskId?: string;
 }
+
+export type CreateTaskStatus = "created" | "drafted" | "rejected";

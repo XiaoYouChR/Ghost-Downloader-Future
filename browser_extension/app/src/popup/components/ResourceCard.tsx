@@ -11,9 +11,9 @@ import {
 } from "@fluentui/react-components";
 import {ArrowDownloadRegular, CheckmarkCircleRegular} from "@fluentui/react-icons";
 
-import type {CapturedResource} from "../../shared/types";
+import type {Resource} from "../../shared/types";
 import {describeResource, domainFromUrl, formatBytes, formatCapturedAt, truncate,} from "../../shared/utils";
-import {visualIcon} from "../lib/presenters";
+import {visualIcon} from "../fluent";
 
 const useStyles = makeStyles({
   root: {
@@ -72,7 +72,7 @@ export function ResourceCard({
   onSend,
   onSelectedChange,
 }: {
-  resource: CapturedResource;
+  resource: Resource;
   connected: boolean;
   busy?: boolean;
   selected?: boolean;

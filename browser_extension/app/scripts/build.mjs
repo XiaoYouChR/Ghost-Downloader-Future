@@ -96,10 +96,10 @@ for (const [target, config] of Object.entries(buildTargets)) {
     outfile: path.resolve(config.outDir, "content-script.js"),
   });
 
-  // GD3's own page-media probe (MAIN world) and overlay (ISOLATED world). Authored in TS
-  // under src/page-media — kept out of the vendored catch-script/ directory on purpose.
+  // GD3's own page-media probe (MAIN world) and download button (ISOLATED world). Authored
+  // in TS under src/page-media — kept out of the vendored catch-script/ directory on purpose.
   await esbuild({
-    entryPoints: [path.resolve(appRoot, "src/page-media/mse-probe.ts")],
+    entryPoints: [path.resolve(appRoot, "src/page-media/attribution/mse-probe.ts")],
     bundle: true,
     format: "iife",
     target: config.runtimeTarget,
@@ -108,7 +108,7 @@ for (const [target, config] of Object.entries(buildTargets)) {
   });
 
   await esbuild({
-    entryPoints: [path.resolve(appRoot, "src/page-media/overlay.ts")],
+    entryPoints: [path.resolve(appRoot, "src/page-media/download-button/download-button.ts")],
     bundle: true,
     format: "iife",
     target: config.runtimeTarget,

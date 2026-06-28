@@ -3,10 +3,10 @@ import {Badge, Button, Caption1, Card, makeStyles, Tab, TabList} from "@fluentui
 import {TabDesktopRegular, WindowMultipleRegular} from "@fluentui/react-icons";
 import {useEffect, useMemo, useState} from "react";
 
-import type {CapturedResource, ResourceCollectionState, ResourceFilter, ResourceScope} from "../../shared/types";
+import type {Resource, ResourceCollectionState, ResourceFilter, ResourceScope} from "../../shared/types";
 import {canUseOnlineMergeSelection, filterResources} from "../../shared/utils";
-import {EmptyState} from "./EmptyState";
-import {ResourceCard} from "./ResourceCard";
+import {EmptyState} from "../components/EmptyState";
+import {ResourceCard} from "../components/ResourceCard";
 
 const useStyles = makeStyles({
   root: {
@@ -105,8 +105,8 @@ export function ResourcesPage({
   onSendResource,
   onMergeResources,
 }: {
-  currentResources: CapturedResource[];
-  otherResources: CapturedResource[];
+  currentResources: Resource[];
+  otherResources: Resource[];
   activePageDomain: string;
   resourceState: ResourceCollectionState;
   resourceStateMessage: string;

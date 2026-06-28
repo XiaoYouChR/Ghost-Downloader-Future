@@ -1,20 +1,20 @@
 import type {
-    DesktopRequestResult,
+    CommandResult,
     TaskSummary,
     PopupState,
     PopupView,
 } from "./shared/types";
 import type {PopupCommand} from "./shared/popup-protocol";
-import {createDesktopBridge, setInstallType} from "./background/desktop-bridge";
+import {createDesktopBridge} from "./background/desktop-bridge";
 import {createFeatureBridge} from "./background/feature-bridge";
 import {createMediaBridge} from "./background/media-bridge";
 import {createResourceBridge} from "./background/resource-bridge";
-import {INTERCEPT_DOWNLOADS_KEY, MEDIA_DOWNLOAD_OVERLAY_KEY,} from "./background/constants";
+import {SHOULD_TAKE_DOWNLOADS_KEY, IS_MEDIA_BUTTON_ENABLED_KEY,} from "./background/constants";
 import {
     cancelDownload,
     eraseDownloadFromHistory,
     findTab,
-    loadFromLocalStorage,
+    loadLocalState,
     openActionPopup,
     queryTabs,
 } from "./background/chrome-helpers";
@@ -27,11 +27,11 @@ const resourceBridge = createResourceBridge({
 const featureBridge = createFeatureBridge();
 const mediaBridge = createMediaBridge();
 
-let interceptDownloads = true;
-let mediaDownloadOverlayEnabled = true;
+let shouldTakeDownloads = true;
+let isMediaButtonEnabled = true;
 
-async function injectMediaDownloadOverlay(tabId: number) {
-  if (!mediaDownloadOverlayEnabled) {
+async function injectMediaButton(tabId: number) {
+  if (!isMediaButtonEnabled) {
     return;
   }
   const tab = await findTab(tabId);
@@ -50,9 +50,9 @@ async function injectMediaDownloadOverlay(tabId: number) {
   }
 }
 
-async function updateMediaDownloadOverlay(enabled: boolean) {
-  mediaDownloadOverlayEnabled = enabled;
-  await chrome.storage.local.set({ [MEDIA_DOWNLOAD_OVERLAY_KEY]: enabled });
+async function setMediaButtonEnabled(enabled: boolean) {
+  isMediaButtonEnabled = enabled;
+  await chrome.storage.local.set({ [IS_MEDIA_BUTTON_ENABLED_KEY]: enabled });
 
   const tabs = await queryTabs({});
   for (const tab of tabs) {
@@ -60,18 +60,18 @@ async function updateMediaDownloadOverlay(enabled: boolean) {
       continue;
     }
     chrome.tabs.sendMessage(tab.id, {
-      type: "media_download_overlay_set_enabled",
+      type: "media_button_set_enabled",
       enabled,
     }, () => {
       const lastError = chrome.runtime.lastError;
       if (enabled && lastError && tab.id) {
-        void injectMediaDownloadOverlay(tab.id);
+        void injectMediaButton(tab.id);
       }
     });
   }
 }
 
-function taskCounters(tasks: TaskSummary[]) {
+function buildTaskCounters(tasks: TaskSummary[]) {
   return {
     total: tasks.length,
     active: tasks.filter((task) => task.status !== "completed").length,
@@ -98,10 +98,10 @@ async function buildPopupState(options: {
     desktopVersion: desktopState.desktopVersion,
     token: desktopState.token,
     serverUrl: desktopState.serverUrl,
-    interceptDownloads,
-    mediaDownloadOverlayEnabled,
+    shouldTakeDownloads,
+    isMediaButtonEnabled,
     tasks: desktopState.tasks,
-    taskCounters: taskCounters(desktopState.tasks),
+    taskCounters: buildTaskCounters(desktopState.tasks),
     tabId: activeTabId,
     featureStates: featureBridge.createFeatureStateMap(activeTabId),
     mediaItems: mediaPanelState.mediaItems,
@@ -110,23 +110,23 @@ async function buildPopupState(options: {
   };
 }
 
-async function initialize() {
-  const localState = await loadFromLocalStorage<{
-    [INTERCEPT_DOWNLOADS_KEY]: boolean;
-    [MEDIA_DOWNLOAD_OVERLAY_KEY]: boolean;
+async function setupBackground() {
+  const localState = await loadLocalState<{
+    [SHOULD_TAKE_DOWNLOADS_KEY]: boolean;
+    [IS_MEDIA_BUTTON_ENABLED_KEY]: boolean;
   }>({
-    [INTERCEPT_DOWNLOADS_KEY]: true,
-    [MEDIA_DOWNLOAD_OVERLAY_KEY]: true,
+    [SHOULD_TAKE_DOWNLOADS_KEY]: true,
+    [IS_MEDIA_BUTTON_ENABLED_KEY]: true,
   });
 
-  interceptDownloads = Boolean(localState[INTERCEPT_DOWNLOADS_KEY] ?? true);
-  mediaDownloadOverlayEnabled = Boolean(localState[MEDIA_DOWNLOAD_OVERLAY_KEY] ?? true);
+  shouldTakeDownloads = Boolean(localState[SHOULD_TAKE_DOWNLOADS_KEY] ?? true);
+  isMediaButtonEnabled = Boolean(localState[IS_MEDIA_BUTTON_ENABLED_KEY] ?? true);
 
   try {
     const selfInfo = await chrome.management.getSelf();
-    setInstallType(selfInfo.installType);
+    desktopBridge.setInstallType(selfInfo.installType);
   } catch {
-    setInstallType("normal");
+    desktopBridge.setInstallType("normal");
   }
 
   await desktopBridge.loadPersistentState();
@@ -134,14 +134,14 @@ async function initialize() {
   await featureBridge.loadPersistentState();
   const activeTabId = await resourceBridge.currentTabId();
   if (activeTabId != null) {
-    void injectMediaDownloadOverlay(activeTabId);
+    void injectMediaButton(activeTabId);
   }
 
   if (desktopBridge.buildSnapshot().token) {
     void desktopBridge.connect();
   }
 
-  desktopBridge.ensureReconnectAlarm();
+  desktopBridge.setupReconnectAlarm();
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -159,17 +159,17 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     return;
   }
   desktopBridge.onLocalStorageChanged(changes);
-  if (changes[INTERCEPT_DOWNLOADS_KEY]) {
-    interceptDownloads = Boolean(changes[INTERCEPT_DOWNLOADS_KEY].newValue ?? true);
+  if (changes[SHOULD_TAKE_DOWNLOADS_KEY]) {
+    shouldTakeDownloads = Boolean(changes[SHOULD_TAKE_DOWNLOADS_KEY].newValue ?? true);
   }
-  if (changes[MEDIA_DOWNLOAD_OVERLAY_KEY]) {
-    mediaDownloadOverlayEnabled = Boolean(changes[MEDIA_DOWNLOAD_OVERLAY_KEY].newValue ?? true);
+  if (changes[IS_MEDIA_BUTTON_ENABLED_KEY]) {
+    isMediaButtonEnabled = Boolean(changes[IS_MEDIA_BUTTON_ENABLED_KEY].newValue ?? true);
   }
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
   void resourceBridge.setLastActiveTab(activeInfo.tabId);
-  void injectMediaDownloadOverlay(activeInfo.tabId);
+  void injectMediaButton(activeInfo.tabId);
 });
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
@@ -178,7 +178,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   }
   void resourceBridge.refreshActiveTabFromBrowser().then((tabId) => {
     if (tabId != null) {
-      void injectMediaDownloadOverlay(tabId);
+      void injectMediaButton(tabId);
     }
   });
 });
@@ -211,12 +211,12 @@ chrome.webRequest.onResponseStarted.addListener(
   ["responseHeaders"],
 );
 
-async function interceptBrowserDownload(
+async function takeBrowserDownload(
   downloadItem: chrome.downloads.DownloadItem,
   options: { eraseFromHistory?: boolean } = {},
 ) {
   const finalUrl = downloadItem.finalUrl || downloadItem.url;
-  if (!interceptDownloads || !desktopBridge.isReady() || !/^https?:/i.test(finalUrl)) {
+  if (!shouldTakeDownloads || !desktopBridge.isReady() || !/^https?:/i.test(finalUrl)) {
     return;
   }
 
@@ -229,10 +229,10 @@ async function interceptBrowserDownload(
     // Cleanup failed but the browser will still finish the download as fallback.
   }
 
-  await resourceBridge.handoffBrowserDownload(downloadItem);
+  await resourceBridge.routeBrowserDownload(downloadItem);
 }
 
-function reply(sendResponse: (response?: unknown) => void, response: Promise<unknown>) {
+function sendReply(sendResponse: (response?: unknown) => void, response: Promise<unknown>) {
   void response.then(sendResponse);
   return true;
 }
@@ -240,18 +240,18 @@ function reply(sendResponse: (response?: unknown) => void, response: Promise<unk
 if (supportsDownloadDeterminingFilename()) {
   chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     suggest();
-    void interceptBrowserDownload(downloadItem);
+    void takeBrowserDownload(downloadItem);
   });
 } else if (chrome.downloads.onCreated?.addListener) {
   chrome.downloads.onCreated.addListener((downloadItem) => {
-    void interceptBrowserDownload(downloadItem, { eraseFromHistory: true });
+    void takeBrowserDownload(downloadItem, { eraseFromHistory: true });
   });
 }
 
 // The typed receiver half of the popup command seam (shared/popup-protocol.ts): one
 // exhaustive switch over the command union. Each case narrows the command to its own shape
 // (no cast); the never-typed default makes a missing case a compile error.
-async function handlePopupCommand(command: PopupCommand): Promise<PopupState | DesktopRequestResult> {
+async function runPopupCommand(command: PopupCommand): Promise<PopupState | CommandResult> {
   switch (command.type) {
     case "popup_get_state":
       return buildPopupState({
@@ -267,12 +267,12 @@ async function handlePopupCommand(command: PopupCommand): Promise<PopupState | D
     case "popup_refresh_connection":
       await desktopBridge.connect(true);
       return buildPopupState({ currentView: command.view });
-    case "popup_set_intercept_downloads":
-      interceptDownloads = command.enabled;
-      await chrome.storage.local.set({ [INTERCEPT_DOWNLOADS_KEY]: interceptDownloads });
+    case "popup_set_take_downloads":
+      shouldTakeDownloads = command.enabled;
+      await chrome.storage.local.set({ [SHOULD_TAKE_DOWNLOADS_KEY]: shouldTakeDownloads });
       return buildPopupState({ currentView: command.view });
-    case "popup_set_media_download_overlay":
-      await updateMediaDownloadOverlay(command.enabled);
+    case "popup_set_media_button":
+      await setMediaButtonEnabled(command.enabled);
       return buildPopupState({ currentView: command.view });
     case "popup_set_media_index":
       await mediaBridge.setMediaIndex(command.tabId, command.index);
@@ -284,7 +284,7 @@ async function handlePopupCommand(command: PopupCommand): Promise<PopupState | D
       return { ok: true, message: "请确认配对" };
     case "popup_task_action":
       try {
-        return await desktopBridge.sendRequest<DesktopRequestResult>({
+        return await desktopBridge.sendRequest<CommandResult>({
           type: "task_action",
           taskId: command.taskId,
           action: command.action,
@@ -303,6 +303,13 @@ async function handlePopupCommand(command: PopupCommand): Promise<PopupState | D
       } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : "功能切换失败" };
       }
+    case "popup_media_action":
+      try {
+        await mediaBridge.runAction(command.action, command.value);
+        return { ok: true, message: "" };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : "媒体操作失败" };
+      }
     default:
       return unknownPopupCommand(command);
   }
@@ -311,7 +318,7 @@ async function handlePopupCommand(command: PopupCommand): Promise<PopupState | D
 // Reached only by a popup_ message whose type is not a known command. The `never` parameter
 // makes the switch above exhaustive at compile time; at runtime it returns a structured
 // error instead of throwing, so the caller still gets a response.
-function unknownPopupCommand(command: never): DesktopRequestResult {
+function unknownPopupCommand(command: never): CommandResult {
   return { ok: false, message: `未知命令: ${(command as { type?: string }).type ?? ""}` };
 }
 
@@ -343,15 +350,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "page_download_media") {
-    return reply(sendResponse, resourceBridge.downloadPageMedia(sender, {
+    return sendReply(sendResponse, resourceBridge.downloadPageMedia(sender, {
       selection: message.selection,
       href: String(message.href ?? ""),
       title: String(message.title ?? ""),
     }));
   }
 
-  if (message.type === "page_media_overlay_state") {
-    sendResponse({ enabled: mediaDownloadOverlayEnabled });
+  if (message.type === "page_media_button_state") {
+    sendResponse({ enabled: isMediaButtonEnabled });
     return;
   }
 
@@ -362,8 +369,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // the payload, since the popup is the sole, typed caller.
   if (message.type.startsWith("popup_")) {
     if (!sender.url?.startsWith("chrome-extension://")) { return; }
-    return reply(sendResponse, handlePopupCommand(message as PopupCommand));
+    return sendReply(sendResponse, runPopupCommand(message as PopupCommand));
   }
 });
 
-void initialize();
+void setupBackground();

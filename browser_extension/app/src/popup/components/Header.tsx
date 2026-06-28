@@ -57,24 +57,24 @@ export function Header({
   currentView,
   connectionState,
   connectionMessage,
-  mediaDownloadOverlayEnabled,
-  mediaDownloadOverlayBusy,
-  interceptEnabled,
-  interceptBusy,
+  isMediaButtonEnabled,
+  isMediaButtonBusy,
+  shouldTakeDownloads,
+  isTakeDownloadsBusy,
   onViewChange,
-  onMediaDownloadOverlayToggle,
-  onInterceptToggle,
+  onMediaButtonToggle,
+  onTakeDownloadsToggle,
 }: {
   currentView: PopupView;
   connectionState: DesktopConnectionState;
   connectionMessage: string;
-  mediaDownloadOverlayEnabled: boolean;
-  mediaDownloadOverlayBusy?: boolean;
-  interceptEnabled: boolean;
-  interceptBusy?: boolean;
+  isMediaButtonEnabled: boolean;
+  isMediaButtonBusy?: boolean;
+  shouldTakeDownloads: boolean;
+  isTakeDownloadsBusy?: boolean;
   onViewChange: (view: PopupView) => void;
-  onMediaDownloadOverlayToggle: (enabled: boolean) => void;
-  onInterceptToggle: (enabled: boolean) => void;
+  onMediaButtonToggle: (enabled: boolean) => void;
+  onTakeDownloadsToggle: (enabled: boolean) => void;
 }) {
   const styles = useStyles();
 
@@ -107,18 +107,18 @@ export function Header({
 
         <div className={styles.switches}>
           <Switch
-            checked={mediaDownloadOverlayEnabled}
-            disabled={mediaDownloadOverlayBusy}
+            checked={isMediaButtonEnabled}
+            disabled={isMediaButtonBusy}
             label="下载此媒体"
             labelPosition="before"
-            onChange={(_event, data: SwitchOnChangeData) => onMediaDownloadOverlayToggle(Boolean(data.checked))}
+            onChange={(_event, data: SwitchOnChangeData) => onMediaButtonToggle(Boolean(data.checked))}
           />
           <Switch
-            checked={interceptEnabled}
-            disabled={interceptBusy}
-            label="拦截下载"
+            checked={shouldTakeDownloads}
+            disabled={isTakeDownloadsBusy}
+            label="接管下载"
             labelPosition="before"
-            onChange={(_event, data: SwitchOnChangeData) => onInterceptToggle(Boolean(data.checked))}
+            onChange={(_event, data: SwitchOnChangeData) => onTakeDownloadsToggle(Boolean(data.checked))}
           />
         </div>
       </div>

@@ -1,10 +1,10 @@
 /*
  * Ghost Downloader — MSE attribution probe (MAIN world).
  * Proxy layout derived from cat-catch (catch-script/catch.js); upstream is GPL-3.0.
- * We post tagged, typed signals to the ISOLATED-world controller instead of capturing
- * buffers. Built as a standalone IIFE bundle (see scripts/build.mjs).
+ * We post tagged, typed signals to the ISOLATED-world attribution engine instead of
+ * capturing buffers. Built as a standalone IIFE bundle (see scripts/build.mjs).
  */
-import {postMediaSignal} from "./signals";
+import {postMediaSignal} from "./attribution-signal";
 
 declare global {
   interface Window {
@@ -31,7 +31,7 @@ type GhostXMLHttpRequest = XMLHttpRequest & { __gd3Url?: string };
     return id;
   }
 
-  // Record blob URL → MediaSource so the controller can attribute <video>.src to a MS.
+  // Record blob URL → MediaSource so the attribution engine can attribute <video>.src to a MS.
   if (typeof window.URL?.createObjectURL === "function" && typeof window.MediaSource !== "undefined") {
     const originalCreateObjectUrl = window.URL.createObjectURL;
     window.URL.createObjectURL = function patchedCreateObjectURL(source: Blob | MediaSource): string {

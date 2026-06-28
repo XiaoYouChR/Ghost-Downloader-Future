@@ -2,7 +2,7 @@ import {selectDouyin} from "./strategies/douyin";
 import {selectGeneric} from "./strategies/generic";
 import {selectX} from "./strategies/x";
 import {selectYouTube} from "./strategies/youtube";
-import type {Resolution, VideoSessionFormKind} from "./types";
+import type {Resolution, VideoSessionFormKind} from "../types";
 
 // One attributed URL as the strategies see it — also the element type of
 // SessionSnapshot.attributedUrls and of a FindUrlsByIdHint return.

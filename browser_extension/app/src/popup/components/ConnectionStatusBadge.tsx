@@ -3,7 +3,7 @@ import {CheckmarkCircleRegular, PlugDisconnectedRegular, WarningRegular,} from "
 
 import type {DesktopConnectionState} from "../../shared/types";
 import {connectionLabel, connectionTone} from "../../shared/utils";
-import {toneToBadgeColor} from "../lib/fluent";
+import {toneToBadgeColor} from "../fluent";
 
 export function ConnectionStatusBadge({
   state,

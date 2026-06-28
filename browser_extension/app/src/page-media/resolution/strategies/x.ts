@@ -1,7 +1,7 @@
 import {hostEndsWith, isStreamUrl} from "../url-classify";
 import {newestMatching, postBindAttributedUrls} from "../strategy";
 import type {ResolveContext} from "../strategy";
-import type {Resolution} from "../types";
+import type {Resolution} from "../../types";
 
 const TWITTER_MEDIA_ID = /\/(?:amplify_video(?:_thumb)?|ext_tw_video|tweet_video)\/(\d+)\//i;
 

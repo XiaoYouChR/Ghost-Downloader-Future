@@ -36,6 +36,7 @@ class MainWindow(MSFluentWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self._pages: dict[str, QWidget] = {}
+        self._draftIdByTaskId: dict[str, str] = {}
 
         self._draft = TaskDraft(parent=self)
 
@@ -103,7 +104,8 @@ class MainWindow(MSFluentWindow):
         self.navigationInterface.setCurrentItem(routeKey)
 
     def _bind(self) -> None:
-        self._draft.taskConfirmed.connect(taskService.add)
+        self._draft.taskConfirmed.connect(self._onDraftTaskConfirmed)
+        self._draft.itemsCleared.connect(self._onDraftItemsCleared)
         cfg.customThemeMode.valueChanged.connect(self._onUserThemeChanged)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
 
@@ -113,6 +115,21 @@ class MainWindow(MSFluentWindow):
             from PySide6.QtGui import QKeySequence, QShortcut
             QShortcut(QKeySequence.StandardKey.Close, self).activated.connect(self.close)
 
+    def _onDraftTaskConfirmed(self, task: Task) -> None:
+        taskService.add(task)
+        draftId = self._draftIdByTaskId.pop(task.taskId, None)
+        if draftId is not None:
+            from app.services.browser_service import browserService
+            browserService.confirmDraft(draftId, task.taskId)
+
+    def _onDraftItemsCleared(self) -> None:
+        if not self._draftIdByTaskId:
+            return
+        from app.services.browser_service import browserService
+        for draftId in set(self._draftIdByTaskId.values()):
+            browserService.cancelDraft(draftId)
+        self._draftIdByTaskId.clear()
+
     def addUrls(self, urls: list[str]) -> None:
         dialog = self._draftDialog
         if urls:
@@ -120,9 +137,12 @@ class MainWindow(MSFluentWindow):
         if not dialog.isVisible():
             dialog.showMask()
 
-    def addTasks(self, tasks: list[Task]) -> None:
+    def addTasks(self, tasks: list[Task], draftId: str | None = None) -> None:
         dialog = self._draftDialog
         dialog.addParsedTasks(tasks)
+        if draftId is not None:
+            for task in tasks:
+                self._draftIdByTaskId[task.taskId] = draftId
         if dialog.isActive:
             return
         if sys.platform == "darwin":

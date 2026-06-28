@@ -1,4 +1,4 @@
-import type {CapturedResource, DesktopConnectionState, TaskSummary, ResourceFilter,} from "./types";
+import type {Resource, DesktopConnectionState, TaskSummary, ResourceFilter,} from "./types";
 import {
     CAT_CATCH_AUDIO_EXTENSIONS,
     CAT_CATCH_VIDEO_EXTENSIONS,
@@ -259,7 +259,7 @@ export function dashTrackRoleOf(filename: string, url: string): ResourceMediaKin
   return "";
 }
 
-function mediaKindOf(resource: CapturedResource, extension: string): ResourceMediaKind {
+function mediaKindOf(resource: Resource, extension: string): ResourceMediaKind {
   const mime = resource.mime.toLowerCase();
   if (extension === "m4s") {
     const dashKind = dashTrackRoleOf(resource.filename, resource.url);
@@ -328,7 +328,7 @@ function visualKindOf({
   return "download";
 }
 
-function resourcePresentationParts(resource: CapturedResource): {
+function resourcePresentationParts(resource: Resource): {
   extension: string;
   parserHint: ResourceParserHint;
   deliveryTarget: ResourceDeliveryTarget;
@@ -343,7 +343,7 @@ function resourcePresentationParts(resource: CapturedResource): {
   };
 }
 
-function resourcePrimaryBadge(resource: CapturedResource, parts = resourcePresentationParts(resource)): string {
+function resourcePrimaryBadge(resource: Resource, parts = resourcePresentationParts(resource)): string {
   if (parts.parserHint === "m3u8") {
     return "M3U8";
   }
@@ -363,7 +363,7 @@ function resourcePrimaryBadge(resource: CapturedResource, parts = resourcePresen
   return "资源";
 }
 
-export function describeResource(resource: CapturedResource): ResourcePresentation {
+export function describeResource(resource: Resource): ResourcePresentation {
   const parts = resourcePresentationParts(resource);
   const mime = resource.mime.toLowerCase();
 
@@ -426,7 +426,7 @@ export function describeResource(resource: CapturedResource): ResourcePresentati
 
 // A DASH segment can't stand alone — either the path carries /media-(audio|video)-
 // (Douyin packagers) or it's .m4s (Bilibili/generic CMAF).
-export function isDashSegment(resource: CapturedResource): boolean {
+export function isDashSegment(resource: Resource): boolean {
   const url = resource.url;
   if (url.includes("/media-audio-") || url.includes("/media-video-")) {
     return true;
@@ -435,7 +435,7 @@ export function isDashSegment(resource: CapturedResource): boolean {
   return extension === "m4s";
 }
 
-export function canUseOnlineMerge(resource: CapturedResource): boolean {
+export function canUseOnlineMerge(resource: Resource): boolean {
   const parts = resourcePresentationParts(resource);
   if (parts.deliveryTarget !== "gd3") {
     return false;
@@ -450,11 +450,11 @@ export function canUseOnlineMerge(resource: CapturedResource): boolean {
   );
 }
 
-export function canUseOnlineMergeSelection(resources: CapturedResource[]): boolean {
+export function canUseOnlineMergeSelection(resources: Resource[]): boolean {
   return resources.length === 2 && resources.every(canUseOnlineMerge);
 }
 
-export function sortResourcesForOnlineMerge(resources: CapturedResource[]): CapturedResource[] {
+export function sortResourcesForOnlineMerge(resources: Resource[]): Resource[] {
   return [...resources].sort((left, right) => {
     const leftCategory = describeResource(left).category;
     const rightCategory = describeResource(right).category;
@@ -471,7 +471,7 @@ export function sortResourcesForOnlineMerge(resources: CapturedResource[]): Capt
   });
 }
 
-export function filterResources(resources: CapturedResource[], filter: ResourceFilter): CapturedResource[] {
+export function filterResources(resources: Resource[], filter: ResourceFilter): Resource[] {
   const sorted = [...resources].sort((left, right) => right.capturedAt - left.capturedAt);
   if (filter === "all") {
     return sorted;
