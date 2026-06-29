@@ -350,35 +350,8 @@ class SettingPage(ScrollArea):
         )
 
     def _onExtensionExtractDone(self, path) -> None:
-        from PySide6.QtGui import QPixmap
-        from PySide6.QtWidgets import QLabel
-        from qfluentwidgets import MessageBoxBase, PushButton
-        from app.platform.desktop import openChromiumUrl
-
-        QApplication.clipboard().setText(str(path))
-
-        box = MessageBoxBase(self.window())
-        box.widget.setMinimumWidth(660)
-
-        imageLabel = QLabel(box)
-        pixmap = QPixmap(":/res/install_chrome_extension_guidance.png")
-        imageLabel.setPixmap(pixmap.scaledToWidth(620, Qt.TransformationMode.SmoothTransformation))
-        box.viewLayout.addWidget(imageLabel)
-
-        pathLabel = QLabel(self.tr("扩展已解包到（路径已复制到剪贴板）：\n{}").format(path), box)
-        pathLabel.setWordWrap(True)
-        box.viewLayout.addWidget(pathLabel)
-
-        openDirBtn = PushButton(self.tr("打开扩展目录"), box)
-        openDirBtn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
-        box.viewLayout.addWidget(openDirBtn)
-
-        box.yesButton.setText(self.tr("打开浏览器扩展页面"))
-        box.yesButton.clicked.disconnect()
-        box.yesButton.clicked.connect(lambda: openChromiumUrl("chrome://extensions"))
-        box.cancelButton.setText(self.tr("关闭"))
-
-        box.exec()
+        from app.view.dialogs.extension_install import ExtensionInstallDialog
+        ExtensionInstallDialog(path, self.window()).exec()
 
     def _onExtensionExtractFailed(self, error: str) -> None:
         InfoBar.error(self.tr("解包失败"), error,
