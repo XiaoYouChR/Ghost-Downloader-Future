@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -150,7 +149,9 @@ class YtDlpTaskStep(TaskStep):
                 args.append("--write-auto-subs")
 
         if ytDlpConfig.shouldEmbedThumbnail.value:
-            args.append("--embed-thumbnail")
+            # Convert to jpg so embedding never needs FFmpeg's png/zlib path — our
+            # minimal FFmpeg ships mjpeg only (webp/jpg thumbnails, no png).
+            args.extend(["--embed-thumbnail", "--convert-thumbnails", "jpg"])
         if ytDlpConfig.shouldEmbedChapters.value:
             args.append("--embed-chapters")
         if ytDlpConfig.shouldEmbedMetadata.value:
@@ -255,17 +256,3 @@ class YtDlpTaskStep(TaskStep):
         except Exception as e:
             self.setError(e)
             raise
-
-
-@dataclass(kw_only=True)
-class YtDlpInstallStep(TaskStep):
-    canPause = False
-    binaryPath: str = ""
-
-    async def run(self) -> None:
-        path = Path(self.binaryPath)
-        if not path.is_file():
-            raise FileNotFoundError(f"未找到已下载的 yt-dlp: {path}")
-        if sys.platform != "win32":
-            path.chmod(path.stat().st_mode | 0o755)
-        self.setStatus(TaskStatus.COMPLETED)

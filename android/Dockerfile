@@ -90,18 +90,24 @@ RUN git clone --depth 1 -b develop "${P4A_GIT_URL}" /opt/p4a \
     && grep -q 'windowSplashScreenBackground' "$QTSTR" && echo "[patch] qt native SplashScreen(API31 windowSplashScreen) OK" \
     && chmod -R a+rX /opt/p4a
 
-ARG FFMPEG_BASE=https://raw.githubusercontent.com/hzw1199/Android-FFmpeg-Prebuilt/main/ffmpeg-8.1.1/bin
+# Minimal LGPL FFmpeg from our own build repo (~3MB tarball with ffmpeg+ffprobe),
+# replacing hzw1199's full build (~30MB). Pinned to a tag for reproducible APKs;
+# bump the tag to update. See https://github.com/XiaoYouChR/Ghost-Downloader-FFmpeg
+ARG FFMPEG_TARBALL=https://github.com/XiaoYouChR/Ghost-Downloader-FFmpeg/releases/download/n8.1.2-gd1/ffmpeg-android-arm64.tar.gz
 ARG NM3U8_URL=https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.5.1-beta/N_m3u8DL-RE_v0.5.1-beta_android-bionic-arm64_20251029.tar.gz
 RUN mkdir -p /opt/gd3-ffmpeg && cd /opt/gd3-ffmpeg \
-    && wget -q "${FFMPEG_BASE}/ffmpeg" -O libffmpeg.so \
-    && wget -q "${FFMPEG_BASE}/ffprobe" -O libffprobe.so \
+    && wget -q "${FFMPEG_TARBALL}" -O /tmp/ffmpeg.tar.gz \
+    && tar -xzf /tmp/ffmpeg.tar.gz -C /tmp \
+    && cp /tmp/ffmpeg /opt/gd3-ffmpeg/libffmpeg.so \
+    && cp /tmp/ffprobe /opt/gd3-ffmpeg/libffprobe.so \
+    && rm -f /tmp/ffmpeg.tar.gz /tmp/ffmpeg /tmp/ffprobe \
     && wget -q "${NM3U8_URL}" -O /tmp/nm3u8.tar.gz \
     && tar -xzf /tmp/nm3u8.tar.gz -C /tmp \
     && cp /tmp/N_m3u8DL-RE /opt/gd3-ffmpeg/libnm3u8dlre.so \
     && rm -f /tmp/nm3u8.tar.gz /tmp/N_m3u8DL-RE \
     && chmod a+rx libffmpeg.so libffprobe.so libnm3u8dlre.so \
     && ls -la /opt/gd3-ffmpeg \
-    && file libffmpeg.so | grep -q "ARM aarch64" && echo "[ffmpeg] bionic arm64 预置 OK" \
+    && file libffmpeg.so | grep -q "ARM aarch64" && echo "[ffmpeg] minimal arm64 预置 OK" \
     && file libnm3u8dlre.so | grep -q "ARM aarch64" && echo "[nm3u8] bionic arm64 预置 OK"
 
 RUN DEPLOY_BASECFG=/usr/local/lib/python3.11/site-packages/PySide6/scripts/deploy_lib/config.py \

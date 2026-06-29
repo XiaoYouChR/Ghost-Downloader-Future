@@ -64,6 +64,13 @@ class MergeTaskOptions(TaskOptions):
     audio: ResourceTaskOptions | None = None
 
 
+@dataclass(frozen=True)
+class BinaryInstallOptions(TaskOptions):
+    name: str = ""
+    executableNames: tuple[str, ...] = ()
+    sha256Url: str = ""
+
+
 @dataclass(kw_only=True)
 class TaskFile:
     index: int

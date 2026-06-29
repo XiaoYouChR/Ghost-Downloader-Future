@@ -7,15 +7,11 @@ from pathlib import Path
 from PySide6.QtWidgets import QWidget
 from qfluentwidgets import BoolValidator, ConfigItem, FolderValidator, OptionsConfigItem, OptionsValidator, RangeConfigItem, RangeValidator
 
-from app.client import buildClient
-from app.config.cfg import cfg
 from app.config.paths import APP_DATA_DIR
 from app.models.pack import BinaryRuntime, PackConfig
 from app.models.task import Task
 from app.platform.android import IS_ANDROID
-from app.platform.filesystem import findExecutable, toPosixPath
-
-RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
+from app.platform.filesystem import findExecutable
 
 
 class YtDlpConfig(PackConfig):
@@ -107,67 +103,27 @@ class YtDlpRuntime(BinaryRuntime):
         return findExecutable(Path(ytDlpConfig.installFolder.value), "yt-dlp")
 
     async def installTask(self) -> Task:
-        from features.http_pack.task import HttpTaskStep
-        from disk_pack.task import InstallTask
-        from .task import YtDlpInstallStep
+        from app.services.feature_service import featureService
+        from app.models.task import BinaryInstallOptions
 
         machine = platform.machine().lower()
         if sys.platform == "win32":
-            assetName = "yt-dlp.exe"
+            asset = "yt-dlp.exe"
         elif sys.platform == "darwin":
-            assetName = "yt-dlp_macos"
+            asset = "yt-dlp_macos"
         elif machine in {"arm64", "aarch64"}:
-            assetName = "yt-dlp_linux_aarch64"
+            asset = "yt-dlp_linux_aarch64"
         else:
-            assetName = "yt-dlp_linux"
+            asset = "yt-dlp_linux"
 
-        client = buildClient(headers={"accept": "application/vnd.github+json"})
-        try:
-            response = await client.get(RELEASE_API)
-            response.raise_for_status()
-            release = await response.json()
-        finally:
-            client.close()
-
-        assets = release.get("assets")
-        if not isinstance(assets, list):
-            raise RuntimeError("GitHub Release 返回了无效的 assets 数据")
-
-        asset = next((item for item in assets if item.get("name") == assetName), None)
-        if asset is None:
-            raise RuntimeError(f"未找到适用于当前平台的 yt-dlp 安装包: {assetName}")
-
-        downloadUrl = asset["browser_download_url"].strip()
-        fileSize = asset["size"]
-        if not downloadUrl or fileSize <= 0:
-            raise RuntimeError("GitHub Release 返回了不完整的安装包信息")
-
-        installFolder = Path(ytDlpConfig.installFolder.value)
         binaryName = "yt-dlp.exe" if sys.platform == "win32" else "yt-dlp"
-        binaryPath = toPosixPath(installFolder / binaryName)
-
-        task = InstallTask(
-            name=f"yt-dlp 安装 ({assetName})",
-            url=downloadUrl,
-            packId="ytdlp",
-            fileSize=fileSize,
-            outputFolder=installFolder,
-            installFolder=str(installFolder),
-        )
-        task.addStep(HttpTaskStep(
-            stepIndex=1,
-            url=downloadUrl,
-            fileSize=fileSize,
-            headers=dict(cfg.defaultRequestHeaders.value),
-            subworkerCount=cfg.preBlockNum.value,
-            canUseRangeRequests=True,
-            outputFile=binaryPath,
+        url = f"https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}"
+        return await featureService.parse(BinaryInstallOptions(
+            url=url,
+            outputFolder=Path(ytDlpConfig.installFolder.value),
+            name=f"yt-dlp 安装 ({asset})",
+            executableNames=(binaryName,),
         ))
-        task.addStep(YtDlpInstallStep(
-            stepIndex=2,
-            binaryPath=binaryPath,
-        ))
-        return task
 
 
 ytDlpRuntime = YtDlpRuntime()

@@ -16,7 +16,7 @@ if [[ "${GD3_CN_MIRROR:-0}" == "1" ]]; then
         --build-arg "RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static"
         --build-arg "RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup"
         --build-arg "P4A_GIT_URL=https://gitee.com/mirrors/python-for-android.git"
-        --build-arg "FFMPEG_BASE=https://cdn.jsdelivr.net/gh/hzw1199/Android-FFmpeg-Prebuilt@main/ffmpeg-8.1.1/bin"
+        --build-arg "FFMPEG_TARBALL=https://ghfast.top/https://github.com/XiaoYouChR/Ghost-Downloader-FFmpeg/releases/download/n8.1.2-gd1/ffmpeg-android-arm64.tar.gz"
         --build-arg "NM3U8_URL=https://ghfast.top/https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.5.1-beta/N_m3u8DL-RE_v0.5.1-beta_android-bionic-arm64_20251029.tar.gz"
         --build-arg "GD3_GRADLE_CN=1"
     )

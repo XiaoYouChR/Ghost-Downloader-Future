@@ -201,18 +201,16 @@ class M3U8Runtime(BinaryRuntime):
         if not url or not fileName or fileSize <= 0:
             raise RuntimeError("GitHub Release 返回了不完整的安装包信息")
 
-        from features.disk_pack.pack import buildBinaryInstallTask
+        from app.services.feature_service import featureService
+        from app.models.task import BinaryInstallOptions
 
         binaryName = "N_m3u8DL-RE.exe" if sys.platform == "win32" else "N_m3u8DL-RE"
-        return buildBinaryInstallTask(
-            "m3u8",
-            Path(m3u8Config.installFolder.value),
-            [binaryName],
+        return await featureService.parse(BinaryInstallOptions(
             url=url,
-            fileName=fileName,
-            fileSize=fileSize,
+            outputFolder=Path(m3u8Config.installFolder.value),
             name=f"N_m3u8DL-RE 安装 ({target})",
-        )
+            executableNames=(binaryName,),
+        ))
 
 
 m3u8Runtime = M3U8Runtime()

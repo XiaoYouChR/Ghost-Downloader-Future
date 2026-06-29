@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import CancelledError
+import hashlib
 import shutil
 import sys
 import tarfile
@@ -16,9 +17,24 @@ from app.platform.filesystem import deletePath
 CHUNK_SIZE = 1 << 20
 
 
+# Disabled: our own HTTP client doesn't set com.apple.quarantine, so for one-click
+# install this is a no-op. Kept (commented) in case a future install source is
+# quarantined (e.g. a user-supplied, browser-downloaded archive). To re-enable,
+# uncomment this plus the two call sites below and restore `import os` / suppress.
+# def removeQuarantine(path: Path) -> None:
+#     if sys.platform != "darwin":
+#         return
+#     with suppress(OSError):
+#         os.removexattr(str(path), "com.apple.quarantine")
+
+
 @dataclass(kw_only=True, eq=False)
 class InstallTask(Task):
     installFolder: str = ""
+
+    @property
+    def canPause(self) -> bool:
+        return False
 
     def deleteFiles(self):
         if self.installFolder:
@@ -166,6 +182,7 @@ class InstallStep(TaskStep):
                     raise RuntimeError(f"安装包解压完成，但未找到可执行文件: {name}")
                 if sys.platform != "win32":
                     executable.chmod(executable.stat().st_mode | 0o755)
+                # removeQuarantine(executable)  # disabled — see removeQuarantine note
 
             if self.shouldDeleteSource and archive is not None and archive.exists():
                 archive.unlink()
@@ -177,3 +194,53 @@ class InstallStep(TaskStep):
         finally:
             if self.shouldDeleteSource and sourceFolder.exists():
                 shutil.rmtree(sourceFolder, ignore_errors=True)
+
+
+@dataclass(kw_only=True)
+class ChecksumStep(TaskStep):
+    canPause = False
+
+    targetFile: str
+    sha256File: str
+
+    async def run(self) -> None:
+        try:
+            text = Path(self.sha256File).read_text(encoding="utf-8", errors="ignore").strip()
+            expected = text.split()[0].lower() if text else ""
+            if not expected:
+                raise RuntimeError(f"未能从校验文件读取 SHA256: {self.sha256File}")
+            actual = await asyncio.to_thread(self._sha256, Path(self.targetFile))
+            if expected != actual:
+                raise RuntimeError(f"SHA256 校验失败: 期望 {expected}, 实际 {actual}")
+            deletePath(Path(self.sha256File))
+            self.setStatus(TaskStatus.COMPLETED)
+        except Exception as e:
+            self.setError(e)
+            raise
+
+    def _sha256(self, path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as file:
+            for chunk in iter(lambda: file.read(CHUNK_SIZE), b""):
+                digest.update(chunk)
+        return digest.hexdigest().lower()
+
+
+@dataclass(kw_only=True)
+class BinaryInstallStep(TaskStep):
+    canPause = False
+
+    binaryPath: str
+
+    async def run(self) -> None:
+        try:
+            path = Path(self.binaryPath)
+            if not path.is_file():
+                raise FileNotFoundError(f"未找到已下载的可执行文件: {path}")
+            if sys.platform != "win32":
+                path.chmod(path.stat().st_mode | 0o755)
+            # removeQuarantine(path)  # disabled — see removeQuarantine note
+            self.setStatus(TaskStatus.COMPLETED)
+        except Exception as e:
+            self.setError(e)
+            raise
