@@ -51,30 +51,35 @@ def restart() -> None:
             Popen(["shutdown", "-r", "now"])
 
 
-_CHROMIUM_APPS_MACOS = ["Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium"]
-_CHROMIUM_BINS_LINUX = [
-    "google-chrome", "google-chrome-stable",
-    "microsoft-edge-stable", "microsoft-edge",
-    "brave-browser",
-    "chromium-browser", "chromium",
-]
-_CHROMIUM_APPS_WIN = ["chrome.exe", "msedge.exe", "brave.exe", "chromium.exe"]
-
-
 def openChromiumUrl(url: str) -> bool:
     import shutil
     import subprocess
 
+    def toBrowserUrl(scheme):
+        if url.startswith("chrome://"):
+            return f"{scheme}://{url[9:]}"
+        return url
+
     match sys.platform:
         case "darwin":
-            for app in _CHROMIUM_APPS_MACOS:
+            for app, scheme in [
+                ("Google Chrome", "chrome"),
+                ("Microsoft Edge", "edge"),
+                ("Brave Browser", "brave"),
+                ("Chromium", "chrome"),
+            ]:
                 if subprocess.run(
-                    ["open", "-a", app, url], capture_output=True
+                    ["open", "-a", app, toBrowserUrl(scheme)], capture_output=True
                 ).returncode == 0:
                     return True
         case "win32":
             import winreg
-            for exe in _CHROMIUM_APPS_WIN:
+            for exe, scheme in [
+                ("chrome.exe", "chrome"),
+                ("msedge.exe", "edge"),
+                ("brave.exe", "brave"),
+                ("chromium.exe", "chrome"),
+            ]:
                 try:
                     with winreg.OpenKey(
                         winreg.HKEY_LOCAL_MACHINE,
@@ -82,15 +87,23 @@ def openChromiumUrl(url: str) -> bool:
                     ) as key:
                         path = winreg.QueryValue(key, None)
                         if path and Path(path).is_file():
-                            subprocess.Popen([path, url])
+                            subprocess.Popen([path, toBrowserUrl(scheme)])
                             return True
                 except OSError:
                     continue
         case _:
-            for cmd in _CHROMIUM_BINS_LINUX:
+            for cmd, scheme in [
+                ("google-chrome", "chrome"),
+                ("google-chrome-stable", "chrome"),
+                ("microsoft-edge-stable", "edge"),
+                ("microsoft-edge", "edge"),
+                ("brave-browser", "brave"),
+                ("chromium-browser", "chrome"),
+                ("chromium", "chrome"),
+            ]:
                 if shutil.which(cmd):
                     try:
-                        subprocess.Popen([cmd, url])
+                        subprocess.Popen([cmd, toBrowserUrl(scheme)])
                         return True
                     except OSError:
                         continue
