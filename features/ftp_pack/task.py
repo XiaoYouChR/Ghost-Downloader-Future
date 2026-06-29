@@ -216,7 +216,7 @@ class FtpStep(TaskStep):
 
         slowest = max(self._subworkers, key=lambda sw: sw.end - sw.position + 1)
         remainingBytes = slowest.end - slowest.position + 1
-        if remainingBytes < cfg.maxReassignSize.value * 1048576:
+        if remainingBytes < cfg.maxReassignSize.value * 1024:
             return
 
         base = remainingBytes // 2

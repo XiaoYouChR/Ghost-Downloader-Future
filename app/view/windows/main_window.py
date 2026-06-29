@@ -47,6 +47,7 @@ class MainWindow(MSFluentWindow):
         self.setWindowIcon(QIcon(":/image/logo.png"))
         self.setWindowTitle("Ghost Downloader")
         self.setMinimumSize(960, 540)
+        self._refreshBackgroundEffect()
         if sys.platform == "darwin":
             self.titleBar.hBoxLayout.insertSpacing(0, 60)
 
@@ -104,7 +105,7 @@ class MainWindow(MSFluentWindow):
 
     def _bind(self) -> None:
         self._draft.taskConfirmed.connect(taskService.add)
-        cfg.customThemeMode.valueChanged.connect(self._onUserThemeChanged)
+        cfg.themeMode.valueChanged.connect(self._onUserThemeChanged)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
 
         if sys.platform == "win32":
@@ -301,7 +302,8 @@ class MainWindow(MSFluentWindow):
             self._isBackgroundEffectDirty = False
             self._refreshBackgroundEffect()
 
-    def refreshThemeColor(self) -> None:
+    @staticmethod
+    def refreshThemeColor() -> None:
         palette = QApplication.palette()
         for role in (QPalette.ColorRole.Accent, QPalette.ColorRole.Highlight):
             color = palette.color(role)
@@ -329,7 +331,7 @@ class MainWindow(MSFluentWindow):
             self._refreshBackgroundEffect()
 
     def _onSystemColorSchemeChanged(self, colorScheme) -> None:
-        if cfg.customThemeMode.value != Theme.AUTO:
+        if cfg.themeMode.value != Theme.AUTO:
             return
         if colorScheme == Qt.ColorScheme.Dark:
             self._setTheme(Theme.DARK)
@@ -347,7 +349,7 @@ class MainWindow(MSFluentWindow):
             return
         from qfluentwidgets import isDarkTheme
         self.windowEffect.removeBackgroundEffect(self.winId())
-        isDark = isDarkTheme() if cfg.customThemeMode.value == Theme.AUTO else cfg.customThemeMode.value == Theme.DARK
+        isDark = isDarkTheme() if cfg.themeMode.value == Theme.AUTO else cfg.themeMode.value == Theme.DARK
 
         if value == "Acrylic":
             self.setStyleSheet("background-color: transparent")

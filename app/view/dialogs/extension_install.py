@@ -8,7 +8,7 @@ from qfluentwidgets import BodyLabel, MessageBoxBase, SubtitleLabel, isDarkTheme
 from app.platform.desktop import openChromiumUrl, openFolder
 
 PREVIEW_SIZE = QSize(720, 405)
-PREVIEW_GIF = ":/res/install_chrome_extension_guidance.gif"
+PREVIEW_GIF = ":/res/install_chrome_extension_guidance.webp"
 
 
 class ExtensionInstallDialog(MessageBoxBase):
@@ -98,6 +98,13 @@ class ExtensionInstallDialog(MessageBoxBase):
         self.yesButton.clicked.connect(self._onInstall)
 
     def _onInstall(self) -> None:
-        QApplication.clipboard().setText("chrome://extensions")
-        openChromiumUrl("chrome://extensions")
+        from qfluentwidgets import InfoBar, InfoBarPosition
+
         openFolder(str(self._path))
+        if not openChromiumUrl("chrome://extensions"):
+            QApplication.clipboard().setText("chrome://extensions")
+            InfoBar.info(
+                self.tr("请手动打开浏览器"),
+                self.tr("chrome://extensions 已复制到剪贴板，请粘贴到地址栏"),
+                duration=5000, position=InfoBarPosition.TOP, parent=self,
+            )

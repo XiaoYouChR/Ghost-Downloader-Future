@@ -72,6 +72,8 @@ def startApp(application):
 
     coroutineRunner.start()
     featureService.load()
+    from app.models.pack import PackConfig
+    PackConfig.load()
     taskService.resumeSaved()
     featureService.start()
 

@@ -28,17 +28,41 @@ class TaskParser:
     def match(self, options: TaskOptions) -> bool:
         raise NotImplementedError
 
+    def matchPassive(self, options: TaskOptions) -> bool:
+        return self.match(options)
+
     async def parse(self, options: TaskOptions) -> Task:
         raise NotImplementedError
 
 
 class PackConfig:
+    _items: dict[str, ConfigItem] = {}
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         for attrName, attrValue in cls.__dict__.items():
             if isinstance(attrValue, ConfigItem):
                 setattr(cfg.__class__, f"pack_{cls.__name__}_{attrName}", attrValue)
-        cfg.load()
+                PackConfig._items[attrValue.key] = attrValue
+
+    @classmethod
+    def load(cls) -> None:
+        if not cls._items:
+            return
+        import json
+        try:
+            with open(cfg.file, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return
+        for k, v in data.items():
+            if not isinstance(v, dict):
+                if k in cls._items:
+                    cls._items[k].deserializeFrom(v)
+            else:
+                for name, value in v.items():
+                    if (key := k + "." + name) in cls._items:
+                        cls._items[key].deserializeFrom(value)
 
     def settingGroups(self, parent: QWidget) -> list[CollapsibleSettingCardGroup]:
         return []

@@ -68,7 +68,7 @@ class MobileMainWindow(QWidget):
         self.addButton.clicked.connect(self._showAddTaskDialog)
         self._draft.taskConfirmed.connect(taskService.add)
         QApplication.instance().applicationStateChanged.connect(self._onApplicationStateChanged)
-        cfg.customThemeMode.valueChanged.connect(self._onThemeModeChanged)
+        cfg.themeMode.valueChanged.connect(self._onThemeModeChanged)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
         qconfig.themeChanged.connect(self.update)
 
@@ -80,7 +80,7 @@ class MobileMainWindow(QWidget):
         setTheme(value if isinstance(value, Theme) else Theme.AUTO, save=False)
 
     def _onSystemColorSchemeChanged(self, _scheme):
-        if cfg.customThemeMode.value == Theme.AUTO:
+        if cfg.themeMode.value == Theme.AUTO:
             setTheme(Theme.AUTO, save=False)
 
     def _onApplicationStateChanged(self, state: Qt.ApplicationState):

@@ -176,13 +176,16 @@ class YtDlpTaskStep(TaskStep):
             if len(parts) >= 4:
                 downloaded = toInt(parts[0])
                 total = toInt(parts[1]) or toInt(parts[2])
-                self.receivedBytes = downloaded
                 self.speed = toInt(parts[3])
                 if total > 0:
+                    if self._totalBytes > 0 and total != self._totalBytes:
+                        self._completedBytes += self._totalBytes
                     self._totalBytes = total
+                    allTotal = self._completedBytes + total
                     if len(self.task.steps) == 1:
-                        self.task.fileSize = max(self.task.fileSize, total)
-                    self.progress = min(99.5, downloaded / total * 100)
+                        self.task.fileSize = max(self.task.fileSize, allTotal)
+                    self.progress = min(99.5, (self._completedBytes + downloaded) / allTotal * 100)
+                self.receivedBytes = self._completedBytes + downloaded
             return
         self.lastMessage = text[:1000]
 
@@ -208,6 +211,7 @@ class YtDlpTaskStep(TaskStep):
 
         self._finalPath = ""
         self._totalBytes = 0
+        self._completedBytes = 0
         self.task.outputFolder.mkdir(parents=True, exist_ok=True)
 
         process = await asyncio.create_subprocess_exec(

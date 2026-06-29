@@ -55,6 +55,6 @@ class ClipboardListener(QObject):
                 continue
             if not parsed.scheme or parsed.geturl() != url:
                 continue
-            if featureService.matches(url):
+            if featureService.matchPassive(url):
                 urls.append(url)
         return urls

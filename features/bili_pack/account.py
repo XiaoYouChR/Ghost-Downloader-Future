@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import json
+import asyncio
 import time
 import urllib.parse
 from functools import reduce
 from hashlib import md5
 from urllib.parse import parse_qsl, urlparse
 
-from loguru import logger
-from PySide6.QtCore import QObject, QTimer, QUrl, Signal
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from PySide6.QtCore import QObject, Signal
 
 from app.client import buildClient
 from .config import bilibiliConfig
@@ -25,7 +23,7 @@ QR_GENERATE_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/gen
 QR_POLL_API = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 LOGIN_INFO_API = "https://api.bilibili.com/x/web-interface/nav"
 LOGOUT_API = "https://passport.bilibili.com/login/exit/v2"
-QR_POLL_INTERVAL = 2000
+QR_POLL_INTERVAL = 2.0
 QR_UNSCANNED = 86101
 QR_SCANNED = 86090
 QR_EXPIRED = 86038
@@ -61,12 +59,7 @@ class BilibiliAccount(QObject):
         self._mid = ""
         self._vip = ""
         self._mixinKey = ""
-
-        self._qrManager = QNetworkAccessManager(self)
-        self._qrTimer = QTimer(self)
-        self._qrTimer.setInterval(QR_POLL_INTERVAL)
-        self._qrTimer.timeout.connect(self._pollQrStatus)
-        self._qrCodeKey = ""
+        self._qrWorkId = ""
 
     @property
     def cookie(self) -> str:
@@ -108,89 +101,81 @@ class BilibiliAccount(QObject):
         params["w_rid"] = md5((query + self._mixinKey).encode()).hexdigest()
         return params
 
-    # ── QR login (Qt-native, no coroutineRunner) ──
+    # ── QR login (wreq via coroutineRunner) ──
 
     def startQrLogin(self):
+        from app.services.coroutine_runner import coroutineRunner
         self.cancelQrLogin()
-        reply = self._qrManager.get(QNetworkRequest(QUrl(QR_GENERATE_API)))
-        reply.finished.connect(lambda: self._onQrGenerated(reply))
+        self._qrWorkId = coroutineRunner.submit(
+            self._pollQrLogin(), done=self._onQrLoginDone, failed=self._onQrLoginFailed,
+        )
 
     def cancelQrLogin(self):
-        self._qrTimer.stop()
-        self._qrCodeKey = ""
+        if self._qrWorkId:
+            from app.services.coroutine_runner import coroutineRunner
+            coroutineRunner.cancel(self._qrWorkId)
+            self._qrWorkId = ""
 
-    def _onQrGenerated(self, reply: QNetworkReply):
-        reply.deleteLater()
-        if reply.error() != QNetworkReply.NetworkError.NoError:
-            self.qrStateChanged.emit(-1, f"获取二维码失败: {reply.errorString()}")
-            return
+    async def _pollQrLogin(self) -> str:
+        from app.services.coroutine_runner import coroutineRunner
 
-        payload = json.loads(reply.readAll().data())
-        if payload.get("code") not in {None, 0}:
-            self.qrStateChanged.emit(-1, payload.get("message") or "获取二维码失败")
-            return
+        client = buildClient()
+        try:
+            response = await client.get(QR_GENERATE_API)
+            response.raise_for_status()
+            payload = await response.json()
+            if payload.get("code") not in {None, 0}:
+                raise ValueError(payload.get("message") or "获取二维码失败")
 
-        data = payload.get("data") or {}
-        loginUrl = str(data.get("url") or "").strip()
-        self._qrCodeKey = str(data.get("qrcode_key") or "").strip()
-        if not loginUrl or not self._qrCodeKey:
-            self.qrStateChanged.emit(-1, "二维码接口返回了不完整的数据")
-            return
+            data = payload.get("data") or {}
+            loginUrl = str(data.get("url") or "").strip()
+            qrCodeKey = str(data.get("qrcode_key") or "").strip()
+            if not loginUrl or not qrCodeKey:
+                raise ValueError("二维码接口返回了不完整的数据")
 
-        self.qrStateChanged.emit(0, loginUrl)
-        self._qrTimer.start()
+            coroutineRunner.post(self.qrStateChanged.emit, 0, loginUrl)
 
-    def _pollQrStatus(self):
-        if not self._qrCodeKey:
-            self._qrTimer.stop()
-            return
-        url = QUrl(f"{QR_POLL_API}?qrcode_key={self._qrCodeKey}")
-        reply = self._qrManager.get(QNetworkRequest(url))
-        reply.finished.connect(lambda: self._onQrPolled(reply))
+            while True:
+                await asyncio.sleep(QR_POLL_INTERVAL)
 
-    def _onQrPolled(self, reply: QNetworkReply):
-        reply.deleteLater()
-        if reply.error() != QNetworkReply.NetworkError.NoError:
-            self._qrTimer.stop()
-            self.qrStateChanged.emit(-1, f"轮询扫码状态失败: {reply.errorString()}")
-            return
+                response = await client.get(QR_POLL_API, query={"qrcode_key": qrCodeKey})
+                response.raise_for_status()
+                payload = await response.json()
+                data = payload.get("data") or {}
+                statusCode = int(data.get("code", -1))
+                statusMessage = str(data.get("message") or "")
 
-        payload = json.loads(reply.readAll().data())
-        if payload.get("code") not in {None, 0}:
-            self._qrTimer.stop()
-            self.qrStateChanged.emit(-1, payload.get("message") or "轮询扫码状态失败")
-            return
+                if statusCode in {QR_UNSCANNED, QR_SCANNED}:
+                    coroutineRunner.post(self.qrStateChanged.emit, statusCode, statusMessage)
+                    continue
 
-        data = payload.get("data") or {}
-        statusCode = int(data.get("code", -1))
-        statusMessage = str(data.get("message") or "")
+                if statusCode == QR_EXPIRED:
+                    coroutineRunner.post(self.qrStateChanged.emit, QR_EXPIRED, "")
+                    return ""
 
-        if statusCode in {QR_UNSCANNED, QR_SCANNED}:
-            self.qrStateChanged.emit(statusCode, statusMessage)
-            return
+                if statusCode == 0:
+                    successUrl = str(data.get("url") or "")
+                    items: dict[str, str] = {}
+                    for name, value in parse_qsl(urlparse(successUrl).query, keep_blank_values=False):
+                        if name in COOKIE_ORDER and value:
+                            items[name] = value
+                    if items:
+                        return toCookie("; ".join(f"{k}={v}" for k, v in items.items()))
 
-        self._qrTimer.stop()
+                return ""
+        finally:
+            client.close()
 
-        if statusCode == QR_EXPIRED:
-            self.qrStateChanged.emit(QR_EXPIRED, "")
-            return
+    def _onQrLoginDone(self, cookie: str):
+        self._qrWorkId = ""
+        if cookie:
+            self.setCookie(cookie)
+            self.fetchAccountInfo()
+            self.qrStateChanged.emit(QR_LOGIN_SUCCESS, "")
 
-        if statusCode == 0:
-            successUrl = str(data.get("url") or "")
-            items: dict[str, str] = {}
-            for name, value in parse_qsl(urlparse(successUrl).query, keep_blank_values=False):
-                if name in COOKIE_ORDER and value:
-                    items[name] = value
-            if items:
-                cookie = toCookie("; ".join(f"{k}={v}" for k, v in items.items()))
-                self.setCookie(cookie)
-                self.fetchAccountInfo()
-                self.qrStateChanged.emit(QR_LOGIN_SUCCESS, "")
-            else:
-                self.qrStateChanged.emit(-1, "登录成功，但未能提取到有效 Cookie")
-            return
-
-        self.qrStateChanged.emit(-1, statusMessage or f"未知扫码状态：{statusCode}")
+    def _onQrLoginFailed(self, error: str):
+        self._qrWorkId = ""
+        self.qrStateChanged.emit(-1, error)
 
     # ── cookie / logout / account info (wreq via coroutineRunner) ──
 
@@ -215,7 +200,7 @@ class BilibiliAccount(QObject):
 
     def fetchAccountInfo(self):
         from app.services.coroutine_runner import coroutineRunner
-        coroutineRunner.submit(self._fetchAccountInfo(), done=self._onAccountInfoDone, failed=self._onAccountInfoFailed)
+        coroutineRunner.submit(self._fetchAccountInfo(), done=self._onAccountInfoDone)
 
     async def fetchWbiKeys(self) -> None:
         if self._mixinKey:
@@ -248,7 +233,7 @@ class BilibiliAccount(QObject):
             "referer": "https://www.bilibili.com/",
         })
         try:
-            response = await client.post(LOGOUT_API, data={
+            response = await client.post(LOGOUT_API, form={
                 "biliCSRF": parts["bili_jct"],
                 "gourl": "https://www.bilibili.com/",
             })
@@ -326,9 +311,6 @@ class BilibiliAccount(QObject):
         if wbiData:
             self._updateWbiKeys(wbiData)
         self.accountChanged.emit()
-
-    def _onAccountInfoFailed(self, error: str):
-        pass
 
 
 bilibiliAccount = BilibiliAccount()

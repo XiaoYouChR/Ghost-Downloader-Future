@@ -61,6 +61,7 @@ def startApp(application, isSilent=False):
         setDockIconVisible(cfg.shouldShowDockIcon.value, activate=False)
     coroutineRunner.start()
 
+    MainWindow.refreshThemeColor()
     window = MainWindow()
 
     if not isSilent:
@@ -71,8 +72,9 @@ def startApp(application, isSilent=False):
         application.processEvents()
 
     featureService.load()
+    from app.models.pack import PackConfig
+    PackConfig.load()
     window.setupPacks()
-    window.refreshThemeColor()  #  Feature Pack Config 加载结构问题导致的深层问题
 
     taskService.taskStarted.connect(lambda _: speedMeter.start())
     taskService.tasksAllCompleted.connect(speedMeter.stop)

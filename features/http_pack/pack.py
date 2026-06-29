@@ -19,11 +19,29 @@ from app.platform.filesystem import toSafeFilename
 from .task import HttpTask, HttpTaskStep
 
 
+DOWNLOADABLE_EXTENSIONS = frozenset({
+    ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m2ts",
+    ".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".wma", ".opus",
+    ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".zst",
+    ".exe", ".msi", ".dmg", ".deb", ".rpm", ".appimage", ".pkg",
+    ".iso", ".img",
+    ".pdf", ".epub",
+    ".apk", ".ipa",
+})
+
+
 class HttpParser(TaskParser):
     priority = 100
 
     def match(self, options: TaskOptions) -> bool:
         return urlparse(options.url).scheme.lower() in {"http", "https"}
+
+    def matchPassive(self, options: TaskOptions) -> bool:
+        parsed = urlparse(options.url)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            return False
+        path = parsed.path.lower()
+        return any(path.endswith(ext) for ext in DOWNLOADABLE_EXTENSIONS)
 
     async def parse(self, options: TaskOptions) -> Task:
         url = options.url

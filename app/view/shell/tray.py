@@ -129,7 +129,7 @@ if sys.platform == "win32":
             self.windowEffect.addShadowEffect(self.winId())
             self.windowEffect.enableBlurBehindWindow(self.winId())
             from app.config.cfg import cfg
-            dark = isDarkTheme() if cfg.customThemeMode.value == "System" else cfg.customThemeMode.value == "Dark"
+            dark = isDarkTheme() if cfg.themeMode.value == "System" else cfg.themeMode.value == "Dark"
             self.windowEffect.setAcrylicEffect(
                 self.winId(),
                 "00000030" if dark else "FFFFFF30",

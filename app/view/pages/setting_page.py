@@ -85,7 +85,7 @@ class SettingPage(ScrollArea):
             SwitchSettingCard(FluentIcon.SPEED_HIGH, self.tr("自动提速"),
                               self.tr("AI 实时检测各线程效率并自动增加线程数以提高下载速度"),
                               cfg.autoSpeedUp),
-            RangeSettingCard(cfg.maxReassignSize, FluentIcon.LIBRARY, self.tr("最大重新分配大小 (MB)"),
+            RangeSettingCard(cfg.maxReassignSize, FluentIcon.LIBRARY, self.tr("最小再分配大小 (KB)"),
                              self.tr("每线程剩余量大于此值时, 有线程完成或自动提速条件满足会触发重新分配")),
             self.speedLimitationCard,
             SwitchSettingCard(FluentIcon.DEVELOPER_TOOLS, self.tr("下载时验证 SSL 证书"),
@@ -121,7 +121,7 @@ class SettingPage(ScrollArea):
         self.storeInstallCard = HyperlinkCard(
             EDGE_ADDONS_URL, self.tr("Edge 商店"), FluentIcon.GLOBE,
             self.tr("从商店安装扩展"),
-            self.tr("推荐 Edge 和 Firefox 用户从商店安装"),
+            self.tr("商店版扩展需等待审核后才能获得更新"),
         )
         firefoxBtn = HyperlinkButton(self.storeInstallCard)
         firefoxBtn.setText(self.tr("Firefox 商店"))
@@ -134,7 +134,7 @@ class SettingPage(ScrollArea):
         self.chromiumInstallCard = PrimaryPushSettingCard(
             self.tr("一键安装"), FluentIcon.DOWNLOAD,
             self.tr("安装到 Chromium 浏览器"),
-            self.tr("自动解包扩展并引导加载（Chrome / Brave 等）"),
+            self.tr("自动解包扩展并引导加载（Chrome / Brave 等），扩展随桌面端更新自动升级"),
         )
         self.exportExtensionButton = HyperlinkButton(self.chromiumInstallCard)
         self.exportExtensionButton.setText(self.tr("导出 CRX"))
@@ -173,7 +173,7 @@ class SettingPage(ScrollArea):
         )
 
         personalCards = [
-            ComboBoxSettingCard(cfg.customThemeMode, FluentIcon.BRUSH, self.tr("应用主题"),
+            ComboBoxSettingCard(cfg.themeMode, FluentIcon.BRUSH, self.tr("应用主题"),
                                 self.tr("更改应用程序的外观"),
                                 texts=[self.tr("浅色"), self.tr("深色"), self.tr("跟随系统设置")]),
         ]

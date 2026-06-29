@@ -136,7 +136,7 @@ class HttpTaskStep(TaskStep):
 
         slowest = max(self.subworkers, key=lambda sw: sw.end - sw.position + 1)
         remainingBytes = slowest.end - slowest.position + 1
-        if remainingBytes < cfg.maxReassignSize.value * 1048576:
+        if remainingBytes < cfg.maxReassignSize.value * 1024:
             return
 
         base = remainingBytes // 2
@@ -338,11 +338,6 @@ class HttpTaskStep(TaskStep):
         shouldDeleteRecord = False
 
         Path(self.outputPath).parent.mkdir(parents=True, exist_ok=True)
-
-        finalOutput = Path(self.task.outputPath)
-        if str(finalOutput) != self.outputPath:
-            finalOutput.parent.mkdir(parents=True, exist_ok=True)
-            finalOutput.touch(exist_ok=True)
 
         emulation = toEmulation(self.clientProfile or cfg.clientProfile.value, "")
         self._client = buildClient(emulation=emulation)

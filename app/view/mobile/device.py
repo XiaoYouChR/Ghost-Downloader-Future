@@ -23,7 +23,7 @@ def setupTheme() -> None:
 
     darkdetect.theme = themeName
     darkdetect.isDark = isSystemDark
-    setTheme(cfg.customThemeMode.value, save=False)
+    setTheme(cfg.themeMode.value, save=False)
 
 
 def setupFont() -> None:

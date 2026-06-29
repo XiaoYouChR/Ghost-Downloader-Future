@@ -155,6 +155,12 @@ class HeadersValidator(ConfigValidator):
 
 class Config(QConfig):
 
+    # 覆盖 QConfig.themeMode，让 QConfig.load() 自动用正确的 key 和 default
+    themeMode = OptionsConfigItem(
+        "Personalization", "ThemeMode", Theme.AUTO,
+        OptionsValidator(Theme), ThemeSerializer(),
+    )
+
     # 下载
     downloadFolder = ConfigItem(
         "GeneralDownload", "DownloadFolder",
@@ -175,7 +181,7 @@ class Config(QConfig):
     preBlockNum = RangeConfigItem("GeneralDownload", "PreBlockNum", 8, RangeValidator(1, 256))
     autoSpeedUp = ConfigItem("GeneralDownload", "AutoSpeedUp", True, BoolValidator())
     maxReassignSize = RangeConfigItem(
-        "GeneralDownload", "MaxReassignSize", 3, RangeValidator(1, 100)
+        "GeneralDownload", "MaxReassignSize", 512, RangeValidator(64, 102400)
     )
 
     # 分类
@@ -201,10 +207,6 @@ class Config(QConfig):
             "Acrylic" if isWin10() else "Mica",
             OptionsValidator(["Acrylic", "Mica", "MicaAlt", "Aero", "None"]),
         )
-    customThemeMode = OptionsConfigItem(
-        "Personalization", "ThemeMode", Theme.AUTO,
-        OptionsValidator(Theme), ThemeSerializer(),
-    )
     dpiScale = RangeConfigItem("Personalization", "DpiScale", 0, RangeValidator(0, 5), restart=True)
     if sys.platform == "darwin":
         shouldShowDockIcon = ConfigItem("Personalization", "ShowDockIcon", True, BoolValidator())

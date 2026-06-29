@@ -9,7 +9,6 @@ from loguru import logger
 
 from app.config.cfg import cfg
 from app.config.paths import APP_DATA_DIR
-from app.platform.filesystem import deduplicateName
 
 if TYPE_CHECKING:
     from app.models.task import Task
@@ -159,7 +158,7 @@ class TaskService(QObject):
                 folder = categoryService.folderOf(task.category)
                 if folder:
                     task.outputFolder = Path(folder)
-        task.name = deduplicateName(task.outputFolder, task.name)
+        task.deduplicateFilename()
         self._store.add(task)
         self._flushTimer.start()
         self.taskAdded.emit(task)
