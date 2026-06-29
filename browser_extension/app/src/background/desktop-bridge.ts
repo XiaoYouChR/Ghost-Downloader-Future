@@ -18,7 +18,6 @@ type PairingResponse = {
 
 const PAIRING_TIMEOUT_MS = 60000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 12000;
-const CREATE_TASK_TIMEOUT_MS = 10 * 60 * 1000;
 const MISSING_PAIRING_MESSAGE = "待配对";
 
 export type DesktopBridgeSnapshot = {
@@ -43,7 +42,6 @@ export function createDesktopBridge() {
   let taskSnapshot: TaskSummary[] = [];
 
   const pendingRequests = new Map<string, PendingRequest>();
-  const pendingDrafts = new Map<string, PendingRequest>();
 
   // Runtime fact about the extension (read once from chrome.management.getSelf in setupBackground).
   // Owned by the bridge instance, not the module, since only connect() consumes it.
@@ -65,11 +63,6 @@ export function createDesktopBridge() {
       clearTimeout(pending.timeoutId);
       pending.reject(new Error(message));
       pendingRequests.delete(requestId);
-    }
-    for (const [draftId, pending] of pendingDrafts.entries()) {
-      clearTimeout(pending.timeoutId);
-      pending.reject(new Error(message));
-      pendingDrafts.delete(draftId);
     }
   }
 
@@ -137,61 +130,14 @@ export function createDesktopBridge() {
       if (!pending) {
         return;
       }
-
-      const status = String(message.status ?? "");
-      if (status === "drafted") {
-        const draftId = String(message.draftId ?? "");
-        pendingRequests.delete(requestId);
-        clearTimeout(pending.timeoutId);
-        pendingDrafts.set(draftId, { ...pending, timeoutId: 0 });
-        return;
-      }
-
       clearTimeout(pending.timeoutId);
       pendingRequests.delete(requestId);
 
-      if (status === "created") {
-        pending.resolve({
-          ok: true,
-          taskId: String(message.taskId ?? ""),
-          message: String(message.message ?? ""),
-        });
-      } else {
-        pending.resolve({
-          ok: false,
-          message: String(message.message ?? "任务创建失败"),
-        });
-      }
-      return;
-    }
-
-    if (message.type === "task_draft_confirmed") {
-      const draftId = String(message.draftId ?? "");
-      const pending = pendingDrafts.get(draftId);
-      if (!pending) {
-        return;
-      }
-      pendingDrafts.delete(draftId);
-      clearTimeout(pending.timeoutId);
+      const ok = message.status === "created" || message.status === "drafted";
       pending.resolve({
-        ok: true,
+        ok,
         taskId: String(message.taskId ?? ""),
-        message: "任务已确认",
-      });
-      return;
-    }
-
-    if (message.type === "task_draft_cancelled") {
-      const draftId = String(message.draftId ?? "");
-      const pending = pendingDrafts.get(draftId);
-      if (!pending) {
-        return;
-      }
-      pendingDrafts.delete(draftId);
-      clearTimeout(pending.timeoutId);
-      pending.resolve({
-        ok: false,
-        message: "任务已取消",
+        message: String(message.message ?? ""),
       });
       return;
     }
@@ -364,15 +310,13 @@ export function createDesktopBridge() {
 
     const requestId = String(payload.requestId ?? buildRequestId());
     const message = { ...payload, requestId };
-    const effectiveTimeout = timeoutMs ?? (
-      payload.type === "create_task" ? CREATE_TASK_TIMEOUT_MS : DEFAULT_REQUEST_TIMEOUT_MS
-    );
+    const effectiveTimeout = timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
     return new Promise<T>((resolve, reject) => {
-      const timeoutId = effectiveTimeout > 0 ? self.setTimeout(() => {
+      const timeoutId = self.setTimeout(() => {
         pendingRequests.delete(requestId);
         reject(new Error("响应超时"));
-      }, effectiveTimeout) : 0;
+      }, effectiveTimeout);
 
       pendingRequests.set(requestId, {
         resolve: (value) => resolve(value as T),

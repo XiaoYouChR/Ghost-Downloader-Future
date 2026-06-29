@@ -373,4 +373,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+chrome.runtime.onSuspend.addListener(() => {
+  void resourceBridge.flushState();
+});
+
 void setupBackground();

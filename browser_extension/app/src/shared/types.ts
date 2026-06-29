@@ -125,5 +125,3 @@ export interface CommandResult {
   message?: string;
   taskId?: string;
 }
-
-export type CreateTaskStatus = "created" | "drafted" | "rejected";

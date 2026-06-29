@@ -87,14 +87,10 @@ def startApp(application):
     taskService.tasksAllCompleted.connect(lambda: keepAlive.release(REASON_DOWNLOAD))
     speedMeter.speedChanged.connect(keepAlive.setSpeed)
 
-    def onBrowserTaskDraftRequested(payload):
-        tasks = payload["tasks"]
-        draftId = payload["draftId"]
+    def onBrowserTaskDraftRequested(tasks):
         for task in tasks:
             taskService.add(task)
         notifyBrowserTaskAdded(tasks)
-        if tasks:
-            browserService.confirmDraft(draftId, tasks[0].taskId)
 
     def onBrowserPairRequested(request):
         browserService.approvePair(request["session"], request["requestId"])

@@ -16,22 +16,24 @@ type RawMediaState = {
   muted?: boolean;
 };
 
-type MediaTarget = {
-  tabId: number;
-  index: number;
-};
-
 type BuiltMediaPanelState = {
   mediaItems: MediaItemOption[];
   playbackState: MediaPlaybackState;
 };
 
+// Single source of truth for "which media are we controlling". Built by buildPanelState
+// (popup-driven poll) and refreshed by runAction (re-probe before commanding). Merging
+// tabId/index/playbackState into one snapshot eliminates the split where index came from
+// mediaControlTarget but isPaused came from lastPlaybackState — they could disagree about
+// which video they described, sending toggle_play in the wrong direction.
+type MediaSnapshot = {
+  tabId: number;
+  index: number;
+  playbackState: MediaPlaybackState;
+};
+
 export function createMediaBridge() {
-  let mediaControlTarget: MediaTarget = { tabId: 0, index: -1 };
-  // Mirrors the last playbackState handed to the popup. Updated on every successful
-  // buildPanelState poll; cleared on failure, no-tab, or tab removal. runAction reads it
-  // to decide play-vs-pause (toggle_play) and whether to auto-unmute (set_volume).
-  let lastPlaybackState: MediaPlaybackState | null = null;
+  let mediaSnapshot: MediaSnapshot | null = null;
 
   function createEmptyPlaybackState(message = "当前未检测到可控制媒体"): MediaPlaybackState {
     return {
@@ -80,6 +82,26 @@ export function createMediaBridge() {
     }
   }
 
+  // Pure builder — the deep module that turns a raw getVideoState response into the
+  // canonical playback state. Shared by buildPanelState (popup poll) and runAction
+  // (pre-command re-probe) so both see the same shape.
+  function buildPlaybackState(tabId: number, index: number, state: RawMediaState): MediaPlaybackState {
+    return {
+      isAvailable: true,
+      message: "",
+      tabId,
+      mediaIndex: index,
+      currentTime: Number(state.currentTime ?? 0),
+      duration: Number(state.duration ?? 0),
+      progress: Number(state.time ?? 0),
+      volume: Number(state.volume ?? 1),
+      isPaused: Boolean(state.paused ?? true),
+      shouldLoop: Boolean(state.loop ?? false),
+      isMuted: Boolean(state.muted ?? false),
+      speed: Number(state.speed ?? 1),
+    };
+  }
+
   async function requestMediaState(tabId: number, index: number): Promise<TabMessageResult<RawMediaState>> {
     return sendMessageToTab<RawMediaState>(
       tabId,
@@ -99,11 +121,15 @@ export function createMediaBridge() {
     }
   }
 
-  function buildMediaMessage(action: MediaAction, value?: number | boolean): Record<string, unknown> | null {
-    const index = mediaControlTarget.index;
+  function buildMediaMessage(
+    action: MediaAction,
+    value: number | boolean | undefined,
+    snapshot: MediaSnapshot,
+  ): Record<string, unknown> | null {
+    const {index, playbackState} = snapshot;
     switch (action) {
       case "toggle_play":
-        return { Message: lastPlaybackState?.isPaused ? "play" : "pause", index };
+        return { Message: playbackState.isPaused ? "play" : "pause", index };
       case "set_speed":
         return { Message: "speed", speed: Number(value ?? 1), index };
       case "pip":
@@ -131,18 +157,18 @@ export function createMediaBridge() {
 
   async function buildPanelState(activeTabId: number | null): Promise<BuiltMediaPanelState> {
     const tabId = activeTabId;
-    let mediaIndex = mediaControlTarget.tabId === tabId ? mediaControlTarget.index : 0;
-
+    // When the popup isn't on the advanced view, activeTabId is null. Don't touch the
+    // snapshot — the user may switch back and expect their video selection to persist.
     if (!tabId) {
-      lastPlaybackState = null;
       return createEmptyMediaPanelState("当前没有可操作的标签页");
     }
 
+    let mediaIndex = mediaSnapshot?.tabId === tabId ? mediaSnapshot.index : 0;
     const result = await requestMediaState(tabId, mediaIndex >= 0 ? mediaIndex : 0);
 
     const state = result.response;
     if (result.status !== "ok" || !state?.count) {
-      lastPlaybackState = null;
+      mediaSnapshot = null;
       return createEmptyMediaPanelState(mediaFailureMessage(result));
     }
 
@@ -150,26 +176,8 @@ export function createMediaBridge() {
     mediaIndex = mediaIndex >= 0 && mediaIndex < count ? mediaIndex : 0;
     const srcList = Array.isArray(state.src) ? state.src : [];
 
-    const playbackState: MediaPlaybackState = {
-      isAvailable: true,
-      message: "",
-      tabId,
-      mediaIndex,
-      currentTime: Number(state.currentTime ?? 0),
-      duration: Number(state.duration ?? 0),
-      progress: Number(state.time ?? 0),
-      volume: Number(state.volume ?? 1),
-      isPaused: Boolean(state.paused ?? true),
-      shouldLoop: Boolean(state.loop ?? false),
-      isMuted: Boolean(state.muted ?? false),
-      speed: Number(state.speed ?? 1),
-    };
-
-    lastPlaybackState = playbackState;
-
-    if (mediaControlTarget.tabId !== tabId || mediaControlTarget.index !== mediaIndex) {
-      mediaControlTarget = { tabId, index: mediaIndex };
-    }
+    const playbackState = buildPlaybackState(tabId, mediaIndex, state);
+    mediaSnapshot = { tabId, index: mediaIndex, playbackState };
 
     return {
       mediaItems: createMediaItems(srcList, count),
@@ -177,13 +185,30 @@ export function createMediaBridge() {
     };
   }
 
+  // Re-probe before commanding. The snapshot from buildPanelState (or setMediaIndex) may be
+  // stale: the video list could have shrunk, leaving index pointing past the end — which
+  // makes upstream content-script.js throw on videoObj[index].currentTime. Refreshing here
+  // also gives toggle_play a fresh isPaused, so play/pause direction matches the live state
+  // rather than what the popup last polled.
   async function runAction(action: MediaAction, value?: number | boolean): Promise<void> {
-    const { tabId, index } = mediaControlTarget;
-    if (!tabId || index < 0 || !lastPlaybackState) {
+    if (!mediaSnapshot) {
       throw new Error("当前没有可控制的媒体");
     }
 
-    const message = buildMediaMessage(action, value);
+    const tabId = mediaSnapshot.tabId;
+    const result = await requestMediaState(tabId, mediaSnapshot.index);
+    const state = result.response;
+    if (result.status !== "ok" || !state?.count) {
+      mediaSnapshot = null;
+      throw new Error(mediaFailureMessage(result));
+    }
+
+    const count = Number(state.count);
+    const index = mediaSnapshot.index >= 0 && mediaSnapshot.index < count ? mediaSnapshot.index : 0;
+    const playbackState = buildPlaybackState(tabId, index, state);
+    mediaSnapshot = { tabId, index, playbackState };
+
+    const message = buildMediaMessage(action, value, mediaSnapshot);
     if (!message) {
       return;
     }
@@ -193,7 +218,7 @@ export function createMediaBridge() {
       action === "set_volume"
       && typeof value === "number"
       && value > 0
-      && lastPlaybackState.isMuted
+      && playbackState.isMuted
     ) {
       await sendMediaCommand(tabId, { Message: "muted", action: false, index });
     }
@@ -202,13 +227,16 @@ export function createMediaBridge() {
   }
 
   function setMediaIndex(tabId: number, index: number) {
-    mediaControlTarget = { tabId, index };
+    if (!mediaSnapshot || mediaSnapshot.tabId !== tabId) {
+      return;
+    }
+    mediaSnapshot.index = index;
+    mediaSnapshot.playbackState.mediaIndex = index;
   }
 
   function onTabRemoved(tabId: number) {
-    if (mediaControlTarget.tabId === tabId) {
-      mediaControlTarget = { tabId: 0, index: -1 };
-      lastPlaybackState = null;
+    if (mediaSnapshot?.tabId === tabId) {
+      mediaSnapshot = null;
     }
   }
 

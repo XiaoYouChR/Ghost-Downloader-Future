@@ -54,7 +54,6 @@ class BrowserClientSession:
     lastSnapshot: str | None = None
     extensionVersion: str = ""
     installType: str = ""
-    clientKind: str = ""
 
 
 class MessageType(StrEnum):
@@ -69,8 +68,6 @@ class MessageType(StrEnum):
     CREATE_TASK_RESULT = "create_task_result"
     TASK_ACTION = "task_action"
     TASK_ACTION_RESULT = "task_action_result"
-    TASK_DRAFT_CONFIRMED = "task_draft_confirmed"
-    TASK_DRAFT_CANCELLED = "task_draft_cancelled"
     RELOAD = "reload"
 
 
@@ -116,7 +113,7 @@ def toInt(data: dict, key: str, default: int) -> int:
 
 class BrowserService(QObject):
     pairRequested = Signal(object)
-    taskDraftRequested = Signal(object)
+    taskDraftRequested = Signal(list)
     extensionUpdated = Signal(str)
     connectionChanged = Signal()
 
@@ -129,7 +126,6 @@ class BrowserService(QObject):
         )
         self._server.newConnection.connect(self._onNewConnection)
         self._sessions: dict[int, BrowserClientSession] = {}
-        self._drafts: dict[str, tuple[BrowserClientSession, str]] = {}
         self._snapshotTimer = QTimer(self)
         self._snapshotTimer.setInterval(1000)
         self._snapshotTimer.timeout.connect(self._broadcastSnapshots)
@@ -190,27 +186,6 @@ class BrowserService(QObject):
             "requestId": requestId,
             "ok": False,
             "message": "已拒绝配对请求",
-        })
-
-    def confirmDraft(self, draftId: str, taskId: str) -> None:
-        entry = self._drafts.pop(draftId, None)
-        if entry is None:
-            return
-        session, _ = entry
-        self._send(session, {
-            "type": MessageType.TASK_DRAFT_CONFIRMED,
-            "draftId": draftId,
-            "taskId": taskId,
-        })
-
-    def cancelDraft(self, draftId: str) -> None:
-        entry = self._drafts.pop(draftId, None)
-        if entry is None:
-            return
-        session, _ = entry
-        self._send(session, {
-            "type": MessageType.TASK_DRAFT_CANCELLED,
-            "draftId": draftId,
         })
 
     def _toResourceTaskOptions(self, resource: dict) -> ResourceTaskOptions:
@@ -280,7 +255,6 @@ class BrowserService(QObject):
             session.socket.close()
             self._deleteSocket(session.socket)
         self._sessions.clear()
-        self._drafts.clear()
 
     def _deleteSocket(self, socket: QWebSocket) -> None:
         try:
@@ -313,8 +287,7 @@ class BrowserService(QObject):
 
     def _sendCreateTaskResult(self, session: BrowserClientSession, requestId: str,
                               status: CreateTaskStatus, *,
-                              taskId: str = "", draftId: str = "",
-                              message: str = "") -> None:
+                              taskId: str = "", message: str = "") -> None:
         payload: dict[str, Any] = {
             "type": MessageType.CREATE_TASK_RESULT,
             "requestId": requestId,
@@ -322,8 +295,6 @@ class BrowserService(QObject):
         }
         if taskId:
             payload["taskId"] = taskId
-        if draftId:
-            payload["draftId"] = draftId
         if message:
             payload["message"] = message
         self._send(session, payload)
@@ -344,9 +315,6 @@ class BrowserService(QObject):
             return
         session = self._sessions.pop(id(socket), None)
         wasAuthenticated = session.isAuthenticated if session else False
-        if session:
-            for draftId in [d for d, (s, _) in self._drafts.items() if s is session]:
-                self._drafts.pop(draftId, None)
         self._deleteSocket(socket)
         if wasAuthenticated:
             self.connectionChanged.emit()
@@ -441,7 +409,6 @@ class BrowserService(QObject):
         session.isAuthenticated = True
         session.extensionVersion = toStr(data, "extensionVersion")
         session.installType = toStr(data, "installType")
-        session.clientKind = toStr(data, "clientKind")
         self.connectionChanged.emit()
 
         self._send(session, {
@@ -517,15 +484,8 @@ class BrowserService(QObject):
 
         isInteractive = source != TaskSource.DOWNLOAD
         if isInteractive and cfg.shouldRaiseWindowOnBrowserTask.value:
-            draftId = f"draft_{token_urlsafe(8)}"
-            self._drafts[draftId] = (session, requestId)
-            self._sendCreateTaskResult(session, requestId, CreateTaskStatus.DRAFTED, draftId=draftId)
-            self.taskDraftRequested.emit({
-                "tasks": [task],
-                "draftId": draftId,
-                "session": session,
-                "requestId": requestId,
-            })
+            self._sendCreateTaskResult(session, requestId, CreateTaskStatus.DRAFTED)
+            self.taskDraftRequested.emit([task])
             return
 
         taskService.add(task)

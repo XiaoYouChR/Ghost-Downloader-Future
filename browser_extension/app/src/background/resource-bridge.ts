@@ -81,6 +81,18 @@ export function createResourceBridge(options: {
     });
   }
 
+  // SW suspension loses all in-memory state; the debounced timer would be abandoned
+  // mid-window, dropping whatever was captured since the last flush. Called from
+  // chrome.runtime.onSuspend so the latest resources survive the restart.
+  async function flushState() {
+    if (bridgePersistTimer === null) {
+      return;
+    }
+    clearTimeout(bridgePersistTimer);
+    bridgePersistTimer = null;
+    await saveBridgeState();
+  }
+
   function basenameOf(path: string): string {
     const trimmed = path.trim();
     if (!trimmed) { return ""; }
@@ -712,6 +724,7 @@ export function createResourceBridge(options: {
     capturePageResource,
     captureRequestResource,
     downloadPageMedia,
+    flushState,
     routeBrowserDownload,
     onNavigationCommitted,
     onRequestHeaders,

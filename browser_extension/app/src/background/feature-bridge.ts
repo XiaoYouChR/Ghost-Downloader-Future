@@ -1,7 +1,7 @@
 import type {AdvancedFeatureKey, FeatureStateMap} from "../shared/types";
 import {CAT_CATCH_SCRIPT_FEATURES, MOBILE_USER_AGENT} from "../shared/cat-catch";
 import {FEATURE_KEYS, FEATURE_TAB_STATE_KEY, MAIN_FRAME_ID,} from "./constants";
-import {loadLocalState, saveLocalState, reloadTab,} from "./chrome-helpers";
+import {loadLocalState, queryTabs, saveLocalState, reloadTab,} from "./chrome-helpers";
 
 type ScriptFeatureKey = keyof typeof CAT_CATCH_SCRIPT_FEATURES;
 const SCRIPT_FEATURE_KEYS = Object.keys(CAT_CATCH_SCRIPT_FEATURES) as ScriptFeatureKey[];
@@ -145,6 +145,26 @@ export function createFeatureBridge() {
     const storedFeatureTabs = localState[FEATURE_TAB_STATE_KEY] ?? {};
     for (const key of FEATURE_KEYS) {
       featureTabs[key] = new Set<number>((storedFeatureTabs[key] ?? []).filter((value): value is number => Number.isInteger(value)));
+    }
+
+    // featureTabs is a cache of tab-level state; tabs can close while the SW is suspended,
+    // leaving stale entries that would re-apply DNR rules or trigger script injection on
+    // a tab that no longer exists. Reconcile against the live tab list before re-applying.
+    const liveTabs = await queryTabs({});
+    const liveTabIds = new Set(liveTabs.filter(tab => tab.id != null).map(tab => tab.id!));
+
+    for (const key of FEATURE_KEYS) {
+      for (const tabId of featureTabs[key]) {
+        if (liveTabIds.has(tabId)) {
+          continue;
+        }
+        featureTabs[key].delete(tabId);
+        if (key === "mobileUserAgent") {
+          void setSessionRule(tabId, false).catch(() => {
+            // Ignore cleanup errors for orphaned rules.
+          });
+        }
+      }
     }
 
     for (const tabId of featureTabs.mobileUserAgent) {
