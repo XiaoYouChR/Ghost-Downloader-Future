@@ -88,9 +88,11 @@ if sys.platform == "win32":
             self.aniManager = None
             self.timer = QTimer(self)
 
-            self._initAcrylicWidget()
+            self._initWidget()
+            self._initLayout()
+            self._bind()
 
-        def _initAcrylicWidget(self):
+        def _initWidget(self) -> None:
             self.setWindowFlags(
                 Qt.WindowType.Popup
                 | Qt.WindowType.FramelessWindowHint
@@ -100,20 +102,21 @@ if sys.platform == "win32":
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             self.setMouseTracking(True)
             self.setStyle(MenuStyle())
-
             self.timer.setSingleShot(True)
             self.timer.setInterval(400)
-            self.timer.timeout.connect(self._onShowMenuTimeOut)
 
+        def _initLayout(self) -> None:
             self.hBoxLayout.addWidget(self.view, 1, Qt.AlignmentFlag.AlignCenter)
             self.hBoxLayout.setContentsMargins(0, 0, 0, 0)
             FluentStyleSheet.MENU.apply(self)
             self.view.setProperty("transparent", True)
 
+        def _bind(self) -> None:
+            self.timer.timeout.connect(self._onShowMenuTimeOut)
             self.view.itemClicked.connect(self._onItemClicked)
             self.view.itemEntered.connect(self._onItemEntered)
 
-        def adjustPosition(self):
+        def adjustPosition(self) -> None:
             m = self.hBoxLayout.contentsMargins()
             rect = getCurrentScreenGeometry()
             w = self.hBoxLayout.sizeHint().width() + 5
@@ -131,6 +134,13 @@ if sys.platform == "win32":
                 self.winId(),
                 "00000030" if dark else "FFFFFF30",
             )
+            # 无 parent 时 fontMetrics 在首次显示前不准，基于正确屏幕重算
+            for action in self._actions:
+                item = action.property('item')
+                if item:
+                    self._adjustItemText(item, action)
+            self.view.adjustSize()
+            self.adjustSize()
             self.adjustPosition()
             self.raise_()
             self.activateWindow()
