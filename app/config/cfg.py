@@ -180,6 +180,7 @@ class Config(QConfig):
     proxyServer = ConfigItem("GeneralDownload", "ProxyServer", "Auto", ProxyValidator())
     preBlockNum = RangeConfigItem("GeneralDownload", "PreBlockNum", 8, RangeValidator(1, 256))
     autoSpeedUp = ConfigItem("GeneralDownload", "AutoSpeedUp", True, BoolValidator())
+    shouldPreserveLastModified = ConfigItem("GeneralDownload", "PreserveLastModified", False, BoolValidator())
     maxReassignSize = RangeConfigItem(
         "GeneralDownload", "MaxReassignSize", 512, RangeValidator(64, 102400)
     )

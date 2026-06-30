@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal, Qt
@@ -31,6 +32,7 @@ class TaskCard(CardWidget):
         super().__init__(parent)
         self._task = task
         self._selectionMode = False
+        self._fileMissing = False
 
         self.checkBox = CheckBox(self)
         self.checkBox.setFixedSize(23, 23)
@@ -41,7 +43,7 @@ class TaskCard(CardWidget):
     def task(self) -> Task:
         return self._task
 
-    def refresh(self) -> None:
+    def refresh(self, force: bool = False) -> None:
         pass
 
     def setSelectionMode(self, enter: bool) -> None:
@@ -207,8 +209,8 @@ class UniversalTaskCard(TaskCard):
         cfg.isCategoryEnabled.valueChanged.connect(self._refreshCategoryIcon)
         categoryService.categoriesChanged.connect(self._refreshCategoryIcon)
 
-    def refresh(self) -> None:
-        if self._lastStatus == self._task.status and self._task.status != TaskStatus.RUNNING:
+    def refresh(self, force: bool = False) -> None:
+        if not force and self._lastStatus == self._task.status and self._task.status != TaskStatus.RUNNING:
             return
 
         task = self._task
@@ -239,7 +241,12 @@ class UniversalTaskCard(TaskCard):
                 self.progressBar.hide()
             else:
                 self.progressBar.stop()
-            self._showStatus(self.tr("任务已经完成"))
+            self._fileMissing = not Path(task.outputPath).exists()
+            self._showStatus(
+                self.tr("文件不存在") if self._fileMissing else self.tr("任务已经完成")
+            )
+            if self._fileMissing:
+                self.statusLabel.setTextColor(QColor(200, 160, 80), QColor(200, 170, 100))
             self.nameLabel.setText(task.name)
             self._refreshIcon()
 
@@ -262,6 +269,7 @@ class UniversalTaskCard(TaskCard):
         self.speedLabel.hide()
         self.etaLabel.hide()
         self.sizeLabel.hide()
+        self.statusLabel.setTextColor()
         self.statusLabel.setText(text)
         self.statusLabel.show()
 
@@ -293,8 +301,10 @@ class UniversalTaskCard(TaskCard):
             self.toggleButton.setIcon(FluentIcon.PLAY)
             self.toggleButton.setEnabled(True)
 
-        self.verifyHashButton.setVisible(self._task.status == TaskStatus.COMPLETED)
-        self.verifyHashButton.setEnabled(self._task.status == TaskStatus.COMPLETED)
+        completed = self._task.status == TaskStatus.COMPLETED
+        self.verifyHashButton.setVisible(completed)
+        self.verifyHashButton.setEnabled(completed and not self._fileMissing)
+        self.openFileButton.setEnabled(not completed or not self._fileMissing)
 
     def _onToggleClicked(self) -> None:
         if self._task.status == TaskStatus.RUNNING:
@@ -312,7 +322,6 @@ class UniversalTaskCard(TaskCard):
             taskService.delete(self._task, deleteFiles.isChecked())
 
     def _onVerifyHashClicked(self) -> None:
-        from pathlib import Path
         if not Path(self._task.outputPath).is_file():
             self._showStatus(self.tr("文件不存在，无法校验"))
             return

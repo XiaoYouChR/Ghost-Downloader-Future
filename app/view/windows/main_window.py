@@ -105,7 +105,7 @@ class MainWindow(MSFluentWindow):
 
     def _bind(self) -> None:
         self._draft.taskConfirmed.connect(taskService.add)
-        cfg.themeMode.valueChanged.connect(self._onUserThemeChanged)
+        cfg.themeChanged.connect(self._setTheme)
         QApplication.instance().styleHints().colorSchemeChanged.connect(self._onSystemColorSchemeChanged)
 
         if sys.platform == "win32":
@@ -311,16 +311,19 @@ class MainWindow(MSFluentWindow):
                 setThemeColor(color, save=False)
                 return
 
-    def _onUserThemeChanged(self, value) -> None:
-        self._setTheme(value, isUserTriggered=True)
-
-    def _setTheme(self, value, isUserTriggered=False) -> None:
-        from qfluentwidgets import setTheme
-        setTheme(value if isinstance(value, Theme) else Theme.AUTO, save=False)
+    def _setTheme(self, value, deferBackgroundRefresh: bool = False) -> None:
+        from qfluentwidgets import qconfig
+        from qfluentwidgets.common.style_sheet import updateStyleSheet
+        prevTheme = qconfig.theme
+        qconfig.theme = value
+        if qconfig.theme != prevTheme:
+            qconfig.themeChanged.emit(qconfig.theme)
+        updateStyleSheet()
+        qconfig.themeChangedFinished.emit()
         from app.view.components.labels import IconBodyLabel
         IconBodyLabel.clearCache()
         if (
-            not isUserTriggered
+            deferBackgroundRefresh
             and sys.platform == "win32"
             and cfg.backgroundEffect.value in {"Mica", "MicaBlur", "MicaAlt"}
         ):
@@ -334,11 +337,11 @@ class MainWindow(MSFluentWindow):
         if cfg.themeMode.value != Theme.AUTO:
             return
         if colorScheme == Qt.ColorScheme.Dark:
-            self._setTheme(Theme.DARK)
+            self._setTheme(Theme.DARK, deferBackgroundRefresh=True)
         elif colorScheme == Qt.ColorScheme.Light:
-            self._setTheme(Theme.LIGHT)
+            self._setTheme(Theme.LIGHT, deferBackgroundRefresh=True)
         else:
-            self._setTheme(Theme.AUTO)
+            self._setTheme(Theme.AUTO, deferBackgroundRefresh=True)
 
     def _refreshBackgroundEffect(self) -> None:
         if sys.platform == "win32":

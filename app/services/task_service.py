@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal
 from loguru import logger
 
 from app.config.cfg import cfg
@@ -124,11 +124,15 @@ class TaskService(QObject):
     taskCompleted = Signal(object)
     taskFailed = Signal(object)
     tasksAllCompleted = Signal()
+    fileDisappeared = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._store = TaskStore()
         self._queue = TaskQueue()
+        self._fileWatcher = QFileSystemWatcher(self)
+        self._watchedPaths: dict[str, str] = {}
+        self._fileWatcher.fileChanged.connect(self._onWatchedFileChanged)
 
         self._flushTimer = QTimer(self)
         self._flushTimer.setSingleShot(True)
@@ -178,6 +182,7 @@ class TaskService(QObject):
 
     def delete(self, task: Task, shouldDeleteFiles: bool) -> None:
         self._cancelRun(task)
+        self._unwatchFile(task)
         self._store.remove(task.taskId)
         self._flushTimer.start()
         self.taskRemoved.emit(task.taskId)
@@ -187,6 +192,7 @@ class TaskService(QObject):
 
     def redownload(self, task: Task) -> None:
         self._cancelRun(task)
+        self._unwatchFile(task)
         task.deleteFiles()
         task.reset()
         self._flushTimer.start()
@@ -221,7 +227,9 @@ class TaskService(QObject):
         from app.models.task import TaskStatus
         for task in self._store.loadSaved():
             self.taskAdded.emit(task)
-            if task.status in {TaskStatus.WAITING, TaskStatus.RUNNING}:
+            if task.status == TaskStatus.COMPLETED and Path(task.outputPath).exists():
+                self._watchFile(task)
+            elif task.status in {TaskStatus.WAITING, TaskStatus.RUNNING}:
                 task.setStatus(TaskStatus.WAITING)
                 self._schedule(task)
 
@@ -283,6 +291,7 @@ class TaskService(QObject):
         self._queue.done(task.taskId)
         self._flushTimer.start()
         self.taskCompleted.emit(task)
+        self._watchFile(task)
         self._pump()
         if self._queue.runningCount() == 0:
             self.tasksAllCompleted.emit()
@@ -294,6 +303,26 @@ class TaskService(QObject):
         self._pump()
         if self._queue.runningCount() == 0:
             self.tasksAllCompleted.emit()
+
+    def _watchFile(self, task: Task) -> None:
+        path = task.outputPath
+        self._watchedPaths[path] = task.taskId
+        self._fileWatcher.addPath(path)
+
+    def _unwatchFile(self, task: Task) -> None:
+        path = task.outputPath
+        self._watchedPaths.pop(path, None)
+        self._fileWatcher.removePath(path)
+
+    def _onWatchedFileChanged(self, path: str) -> None:
+        if Path(path).exists():
+            return
+        taskId = self._watchedPaths.pop(path, None)
+        if taskId is None:
+            return
+        task = self._store.taskById(taskId)
+        if task is not None:
+            self.fileDisappeared.emit(task)
 
 
 taskService = TaskService()

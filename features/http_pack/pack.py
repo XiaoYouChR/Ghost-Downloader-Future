@@ -53,6 +53,7 @@ class HttpParser(TaskParser):
         name = ""
         fileSize = SpecialFileSize.UNKNOWN
         canUseRangeRequests = False
+        lastModified = ""
 
         if isinstance(options, ResourceTaskOptions) and options.name:
             name = toSafeFilename(options.name, fallback=f"file_{time_ns()}")
@@ -178,6 +179,7 @@ class HttpParser(TaskParser):
                     name = f"{name}{standardExt}"
 
                 name = toSafeFilename(name, fallback=f"file_{time_ns()}")
+                lastModified = responseHeaders.get("last-modified", "")
             finally:
                 client.close()
 
@@ -195,6 +197,7 @@ class HttpParser(TaskParser):
             clientProfile=clientProfile,
             subworkerCount=subworkerCount,
             canUseRangeRequests=canUseRangeRequests,
+            lastModified=lastModified,
         ))
         return task
 

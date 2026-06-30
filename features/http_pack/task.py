@@ -57,6 +57,7 @@ class HttpTaskStep(TaskStep):
     clientProfile: str = ""
     subworkerCount: int = 8
     canUseRangeRequests: bool = False
+    lastModified: str = ""
     isAccelerated: bool = False
     outputFile: str = ""
     subworkers: list[HttpSubworker] = field(default_factory=list, repr=False)
@@ -389,3 +390,10 @@ class HttpTaskStep(TaskStep):
             self._client.close()
             if shouldDeleteRecord:
                 self._deleteRecord()
+                if cfg.shouldPreserveLastModified.value and self.lastModified:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        mtime = parsedate_to_datetime(self.lastModified).timestamp()
+                        os.utime(self.outputPath, (mtime, mtime))
+                    except Exception as e:
+                        logger.opt(exception=e).warning("设置文件修改时间失败 {}", self.outputPath)

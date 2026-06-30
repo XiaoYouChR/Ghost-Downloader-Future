@@ -52,6 +52,7 @@ class TaskCommandBarView(CommandBarView):
         self.deleteAction = Action(FluentIcon.DELETE, self.tr("删除"), self)
         self.moveCategoryAction = Action(FluentIcon.TAG, self.tr("移动到分类"), self)
         self.selectAllAction = Action(FluentIcon.CLEAR_SELECTION, self.tr("全选"), self)
+        self.selectMissingAction = Action(FluentIcon.REMOVE, self.tr("选择缺失"), self)
         self.invertSelectAction = Action(FluentIcon.CUT, self.tr("反选"), self)
         self.cancelAction = Action(FluentIcon.CLEAR_SELECTION, self.tr("取消全选"), self)
 
@@ -62,6 +63,7 @@ class TaskCommandBarView(CommandBarView):
         self.addAction(self.moveCategoryAction)
         self.addSeparator()
         self.addAction(self.selectAllAction)
+        self.addAction(self.selectMissingAction)
         self.addAction(self.invertSelectAction)
         self.addAction(self.cancelAction)
         self.resizeToSuitableWidth()
@@ -254,6 +256,7 @@ class TaskPage(QWidget):
         for signal in (taskService.taskStarted, taskService.taskPaused,
                        taskService.taskCompleted, taskService.taskFailed):
             signal.connect(self._refreshVisibleCards)
+        taskService.fileDisappeared.connect(self._onFileDisappeared)
         speedMeter.speedChanged.connect(self._onSpeedChanged)
         self.scrollArea.verticalScrollBar().valueChanged.connect(self._refreshViewport)
 
@@ -279,6 +282,7 @@ class TaskPage(QWidget):
         self.commandView.deleteAction.triggered.connect(self._onDeleteSelected)
         self.commandView.moveCategoryAction.triggered.connect(self._onMoveCategorySelected)
         self.commandView.selectAllAction.triggered.connect(self.selectAll)
+        self.commandView.selectMissingAction.triggered.connect(self.selectMissing)
         self.commandView.invertSelectAction.triggered.connect(self.invertSelection)
         self.commandView.cancelAction.triggered.connect(lambda: self.setSelectionMode(False))
 
@@ -328,6 +332,12 @@ class TaskPage(QWidget):
             card = self._cards.get(taskId)
             if card:
                 card.setChecked(not card.isChecked())
+
+    def selectMissing(self) -> None:
+        for taskId in self._displayOrder:
+            card = self._cards.get(taskId)
+            if card:
+                card.setChecked(card._fileMissing)
 
     def setSelectionMode(self, enter: bool) -> None:
         if self._selectionMode == enter:
@@ -618,3 +628,8 @@ class TaskPage(QWidget):
         if self._selectionAnchor == taskId:
             self._selectionAnchor = None
         self._rebuildTimer.start()
+
+    def _onFileDisappeared(self, task: Task) -> None:
+        card = self._cards.get(task.taskId)
+        if card is not None:
+            card.refresh(force=True)

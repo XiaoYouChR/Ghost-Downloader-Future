@@ -14,7 +14,9 @@ const useStyles = makeStyles({
   root: {
     display: "flex",
     alignItems: "center",
+    flexShrink: 0,
     gap: "6px",
+    whiteSpace: "nowrap",
   },
 });
 
@@ -61,12 +63,11 @@ export function ConnectionStatusBadge({
       {isOffline && onLaunchDesktop && (
         <Button
           appearance="subtle"
+          aria-label="启动桌面端"
           icon={<OpenRegular />}
           size="small"
           onClick={onLaunchDesktop}
-        >
-          启动
-        </Button>
+        />
       )}
     </div>
   );
