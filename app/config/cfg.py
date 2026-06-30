@@ -198,6 +198,12 @@ class Config(QConfig):
     shouldRaiseWindowOnBrowserTask = ConfigItem(
         "Browser", "EnableRaiseWindowWhenReceiveMsg", False, BoolValidator()
     )
+    isUrlSchemeRegistered = ConfigItem("Browser", "UrlSchemeRegistered", False, BoolValidator())
+
+    # Aria2 RPC 兼容
+    isAria2RpcEnabled = ConfigItem("Aria2Rpc", "Enabled", False, BoolValidator())
+    aria2RpcPort = RangeConfigItem("Aria2Rpc", "Port", 16800, RangeValidator(1024, 65535))
+    aria2RpcToken = ConfigItem("Aria2Rpc", "Token", "")
 
     # 个性化
     if sys.platform == "win32":
@@ -226,7 +232,7 @@ class Config(QConfig):
     )
 
     # UI 状态
-    collapsedSettingGroups = ConfigItem("UI", "CollapsedSettingGroups", [], StringListValidator())
+    expandedSettingGroups = ConfigItem("UI", "ExpandedSettingGroups", [], StringListValidator())
     settingGroupOrder = ConfigItem("UI", "SettingGroupOrder", [], StringListValidator())
 
     # 网络

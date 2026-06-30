@@ -213,10 +213,14 @@ def patchInfoPlist() -> None:
         plist = plistlib.load(f)
     plist["CFBundleDocumentTypes"] = documentTypes
     plist["CFBundleIdentifier"] = DESKTOP_ID
+    plist["CFBundleURLTypes"] = [{
+        "CFBundleURLName": DESKTOP_ID,
+        "CFBundleURLSchemes": ["ghostdownloader"],
+    }]
     with open(plistPath, "wb") as f:
         plistlib.dump(plist, f)
 
-    print(f"Patched Info.plist with {len(documentTypes)} document types")
+    print(f"Patched Info.plist with {len(documentTypes)} document types + URL scheme")
 
 
 def main() -> int:

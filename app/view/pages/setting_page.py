@@ -20,7 +20,8 @@ from app.config.constants import (
 from app.view.components.category_settings import CategoryRulesCard
 from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 from app.view.components.setting_cards import (
-    ClientProfileSettingCard, DefaultHeadersSettingCard, ProxySettingCard, SpinBoxSettingCard,
+    ClientProfileSettingCard, DefaultHeadersSettingCard, LineEditSettingCard,
+    ProxySettingCard, SpinBoxSettingCard,
 )
 from app.view.components.editors import FolderPicker
 
@@ -36,6 +37,7 @@ class SettingPage(ScrollArea):
         self.generalGroup = CollapsibleSettingCardGroup(self.tr("综合下载设置"), "general", self.container)
         self.categoryGroup = CollapsibleSettingCardGroup(self.tr("下载分类"), "category", self.container)
         self.browserGroup = CollapsibleSettingCardGroup(self.tr("浏览器扩展"), "browser", self.container)
+        self.aria2RpcGroup = CollapsibleSettingCardGroup(self.tr("Aria2 RPC 兼容"), "aria2rpc", self.container)
         self.personalGroup = CollapsibleSettingCardGroup(self.tr("个性化"), "personalization", self.container)
         self.softwareGroup = CollapsibleSettingCardGroup(self.tr("应用"), "software", self.container)
         self.aboutGroup = CollapsibleSettingCardGroup(self.tr("关于"), "about", self.container)
@@ -155,7 +157,13 @@ class SettingPage(ScrollArea):
             cfg.isBrowserExtensionEnabled,
         )
 
-        self.browserGroup.addSettingCards([
+        self.urlSchemeCard = SwitchSettingCard(
+            FluentIcon.LINK, self.tr("注册 ghostdownloader:// 协议"),
+            self.tr("允许浏览器扩展在桌面端未运行时自动启动"),
+            cfg.isUrlSchemeRegistered,
+        ) if sys.platform != "darwin" else None
+
+        browserCards = [
             self.browserEnableCard,
             SwitchSettingCard(FluentIcon.CHAT, self.tr("收到下载信息时弹出窗口"),
                               self.tr("收到下载信息时弹出窗口，方便您调整下载参数"),
@@ -164,6 +172,30 @@ class SettingPage(ScrollArea):
             self.storeInstallCard,
             self.chromiumInstallCard,
             self.browserPortCard,
+        ]
+        if self.urlSchemeCard:
+            browserCards.insert(2, self.urlSchemeCard)
+
+        self.browserGroup.addSettingCards(browserCards)
+
+        self.aria2RpcGroup.addSettingCards([
+            SwitchSettingCard(
+                FluentIcon.LINK, self.tr("启用 Aria2 RPC 兼容"),
+                self.tr("兼容 Aria2 JSON-RPC 协议，可接收外部工具发送的下载链接"),
+                cfg.isAria2RpcEnabled,
+            ),
+            SpinBoxSettingCard(
+                FluentIcon.GLOBE, self.tr("监听端口"),
+                self.tr("Aria2 RPC 默认端口为 16800"),
+                configItem=cfg.aria2RpcPort, singleStep=1, division=1,
+            ),
+            LineEditSettingCard(
+                FluentIcon.FINGERPRINT, self.tr("令牌"),
+                self.tr("若设置，客户端需传入 token 才可创建任务"),
+                configItem=cfg.aria2RpcToken,
+                placeholder=self.tr("可选"),
+                isPassword=True,
+            ),
         ])
 
         self.zoomCard = SpinBoxSettingCard(
@@ -274,6 +306,7 @@ class SettingPage(ScrollArea):
         self.addSettingGroup(self.generalGroup)
         self.addSettingGroup(self.categoryGroup)
         self.addSettingGroup(self.browserGroup)
+        self.addSettingGroup(self.aria2RpcGroup)
         self.addSettingGroup(self.personalGroup)
         self.addSettingGroup(self.softwareGroup)
         from app.services.feature_service import featureService
@@ -300,6 +333,8 @@ class SettingPage(ScrollArea):
         self.regenerateTokenButton.clicked.connect(self._onRegenerateTokenClicked)
         self.chromiumInstallCard.clicked.connect(self._onChromiumInstallClicked)
         self.exportExtensionButton.clicked.connect(self._onExportExtensionClicked)
+        if self.urlSchemeCard:
+            self.urlSchemeCard.checkedChanged.connect(self._onUrlSchemeChanged)
         self.autoRunCard.checkedChanged.connect(self._onRunAtLoginChanged)
         self.aboutCard.clicked.connect(self._onAboutCardClicked)
         self.feedbackCard.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL)))
@@ -363,12 +398,10 @@ class SettingPage(ScrollArea):
         port = browserService.boundPort
         if not installType:
             text = self.tr("未连接")
-            if port:
-                text += self.tr(" · 端口 {}").format(port)
         elif installType == "development":
-            text = self.tr("已连接 · 桌面端自管理 v{} · 端口 {}").format(version, port)
+            text = self.tr("已连接 v{} (桌面端自管理)").format(version)
         else:
-            text = self.tr("已连接 · 由商店管理 v{} · 端口 {}").format(version, port)
+            text = self.tr("已连接 v{} (商店安装)").format(version)
         self.browserEnableCard.setContent(text)
 
     def _onExportExtensionClicked(self) -> None:
@@ -379,6 +412,13 @@ class SettingPage(ScrollArea):
         if path:
             with open(path, "wb") as f:
                 f.write(QResource(":/res/chrome_extension.crx").data())
+
+    def _onUrlSchemeChanged(self, enabled: bool) -> None:
+        from app.platform.url_scheme import registerUrlScheme, unregisterUrlScheme
+        if enabled:
+            registerUrlScheme()
+        else:
+            unregisterUrlScheme()
 
     def _onRunAtLoginChanged(self, enabled: bool) -> None:
         from app.platform.run_at_login import setRunAtLogin
