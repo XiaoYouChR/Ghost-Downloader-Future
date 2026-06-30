@@ -32,7 +32,7 @@ export function EmptyState({
   description,
   action,
 }: {
-  icon: JSX.Element;
+  icon: ReactNode;
   title: string;
   description: string;
   action?: ReactNode;

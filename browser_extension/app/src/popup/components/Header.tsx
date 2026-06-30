@@ -1,7 +1,6 @@
 import type {SelectTabData, SwitchOnChangeData} from "@fluentui/react-components";
 import {Button, Divider, makeStyles, Switch, Tab, TabList} from "@fluentui/react-components";
 import {ArrowDownloadRegular, GlobeRegular, ImageRegular, SettingsRegular, WrenchRegular,} from "@fluentui/react-icons";
-
 import type {DesktopConnectionState, PopupView} from "../../shared/types";
 import {ConnectionStatusBadge} from "./ConnectionStatusBadge";
 
@@ -46,7 +45,7 @@ const useStyles = makeStyles({
 const NAV_ITEMS: Array<{
   key: Extract<PopupView, "tasks" | "resources" | "images" | "advanced">;
   label: string;
-  icon: JSX.Element;
+  icon: React.JSX.Element;
 }> = [
   { key: "tasks", label: "任务", icon: <ArrowDownloadRegular /> },
   { key: "resources", label: "资源", icon: <GlobeRegular /> },

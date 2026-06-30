@@ -27,17 +27,18 @@ export async function flush(
     return 0;
   }
 
+  const failed: TaskPayload[] = [];
   let sent = 0;
   for (const payload of queue) {
     try {
       await sendFn(payload);
       sent += 1;
     } catch {
-      // Individual task failure shouldn't block the rest.
+      failed.push(payload);
     }
   }
 
-  await writeQueue([]);
+  await writeQueue(failed);
   return sent;
 }
 

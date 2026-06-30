@@ -28,6 +28,10 @@ function sendRuntimeMessage<T>(message: unknown): Promise<T> {
         reject(new Error(lastError.message));
         return;
       }
+      if (response == null) {
+        reject(new Error("后台服务未就绪"));
+        return;
+      }
       resolve(response);
     });
   });

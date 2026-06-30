@@ -227,7 +227,7 @@ class TaskService(QObject):
         from app.models.task import TaskStatus
         for task in self._store.loadSaved():
             self.taskAdded.emit(task)
-            if task.status == TaskStatus.COMPLETED and Path(task.outputPath).exists():
+            if task.status == TaskStatus.COMPLETED and task.hasOutputFile and Path(task.outputPath).exists():
                 self._watchFile(task)
             elif task.status in {TaskStatus.WAITING, TaskStatus.RUNNING}:
                 task.setStatus(TaskStatus.WAITING)
@@ -291,7 +291,8 @@ class TaskService(QObject):
         self._queue.done(task.taskId)
         self._flushTimer.start()
         self.taskCompleted.emit(task)
-        self._watchFile(task)
+        if task.hasOutputFile:
+            self._watchFile(task)
         self._pump()
         if self._queue.runningCount() == 0:
             self.tasksAllCompleted.emit()

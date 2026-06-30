@@ -51,7 +51,7 @@ type NetworkResponseMeta = {
   supportsRange: boolean;
 };
 
-type DesktopRequestSender = <T extends CommandResult>(payload: Record<string, unknown>) => Promise<T>;
+type DesktopRequestSender = <T extends CommandResult>(payload: Record<string, unknown>, timeoutMs?: number) => Promise<T>;
 
 export function createResourceBridge(options: {
   sendDesktopRequest: DesktopRequestSender;
@@ -614,7 +614,7 @@ export function createResourceBridge(options: {
         pageTitle: title || "",
         headers: cache.headersForPage(selection.pageUrl),
       },
-    });
+    }, 120_000);
   }
 
   function mergeOutputTitle(resources: Resource[]): string {

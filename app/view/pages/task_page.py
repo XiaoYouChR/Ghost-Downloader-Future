@@ -42,6 +42,7 @@ class SortField(IntEnum):
     CREATED_AT = 0
     NAME = 1
     SIZE = 2
+    COMPLETED_AT = 3
 
 
 class TaskCommandBarView(CommandBarView):
@@ -153,7 +154,8 @@ class TaskPage(QWidget):
         self.sortMenu = CheckableMenu(parent=self, indicatorType=MenuIndicatorType.RADIO)
         self.sortFieldGroup = QActionGroup(self)
         self.sortOrderGroup = QActionGroup(self)
-        self.timeSortAction = Action(FluentIcon.DATE_TIME, self.tr("按时间排序"), self, checkable=True)
+        self.createdAtSortAction = Action(FluentIcon.DATE_TIME, self.tr("按添加时间"), self, checkable=True)
+        self.completedAtSortAction = Action(FluentIcon.HISTORY, self.tr("按完成时间"), self, checkable=True)
         self.nameSortAction = Action(FluentIcon.FONT, self.tr("按名称排序"), self, checkable=True)
         self.ascendingAction = Action(FluentIcon.UP, self.tr("顺序"), self, checkable=True)
         self.descendingAction = Action(FluentIcon.DOWN, self.tr("倒序"), self, checkable=True)
@@ -183,17 +185,19 @@ class TaskPage(QWidget):
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.enableTransparentBackground()
 
-        self.sortFieldGroup.addAction(self.timeSortAction)
+        self.sortFieldGroup.addAction(self.createdAtSortAction)
+        self.sortFieldGroup.addAction(self.completedAtSortAction)
         self.sortFieldGroup.addAction(self.nameSortAction)
         self.sortOrderGroup.addAction(self.ascendingAction)
         self.sortOrderGroup.addAction(self.descendingAction)
-        self.sortMenu.addAction(self.timeSortAction)
+        self.sortMenu.addAction(self.createdAtSortAction)
+        self.sortMenu.addAction(self.completedAtSortAction)
         self.sortMenu.addAction(self.nameSortAction)
         self.sortMenu.addSeparator()
         self.sortMenu.addAction(self.ascendingAction)
         self.sortMenu.addAction(self.descendingAction)
         self.sortButton.setMenu(self.sortMenu)
-        self.timeSortAction.setChecked(True)
+        self.createdAtSortAction.setChecked(True)
         self.descendingAction.setChecked(True)
 
         self.filterGroup.addAction(self.allFilterAction)
@@ -266,7 +270,8 @@ class TaskPage(QWidget):
         self.planButton.clicked.connect(self._onPlanButtonClicked)
         self.rateLimitButton.clicked.connect(self._onRateLimitToggled)
 
-        self.timeSortAction.triggered.connect(lambda: self.setSortField(SortField.CREATED_AT))
+        self.createdAtSortAction.triggered.connect(lambda: self.setSortField(SortField.CREATED_AT))
+        self.completedAtSortAction.triggered.connect(lambda: self.setSortField(SortField.COMPLETED_AT))
         self.nameSortAction.triggered.connect(lambda: self.setSortField(SortField.NAME))
         self.ascendingAction.triggered.connect(lambda: self.setSortOrder(True))
         self.descendingAction.triggered.connect(lambda: self.setSortOrder(False))
@@ -521,6 +526,13 @@ class TaskPage(QWidget):
             tasks.sort(key=lambda t: t.name.lower(), reverse=not self._sortAscending)
         elif self._sortField == SortField.SIZE:
             tasks.sort(key=lambda t: t.fileSize, reverse=not self._sortAscending)
+        elif self._sortField == SortField.COMPLETED_AT:
+            desc = not self._sortAscending
+            completed = [t for t in tasks if t.completedAt]
+            pending = [t for t in tasks if not t.completedAt]
+            completed.sort(key=lambda t: t.completedAt, reverse=desc)
+            pending.sort(key=lambda t: t.createdAt, reverse=desc)
+            tasks = pending + completed if desc else completed + pending
         else:
             tasks.sort(key=lambda t: t.createdAt, reverse=not self._sortAscending)
 

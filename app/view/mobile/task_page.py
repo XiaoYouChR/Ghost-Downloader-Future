@@ -83,6 +83,7 @@ class MobileTaskPage(QWidget):
     def _showSortMenu(self) -> None:
         items = [
             (SortField.CREATED_AT, self.tr("添加时间")),
+            (SortField.COMPLETED_AT, self.tr("完成时间")),
             (SortField.NAME, self.tr("名称")),
             (SortField.SIZE, self.tr("大小")),
         ]

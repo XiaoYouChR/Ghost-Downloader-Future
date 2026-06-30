@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from enum import auto, IntEnum
 from pathlib import Path
-from time import time_ns
+from time import time
 from typing import ClassVar, Type, Iterable
 from uuid import uuid4
 
@@ -164,6 +164,7 @@ class Task:
     _registry: ClassVar[dict[str, Type[Task]]] = {}
     canEdit: ClassVar[bool] = False
     fileType: ClassVar[type] = TaskFile
+    hasOutputFile: ClassVar[bool] = True
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -175,7 +176,8 @@ class Task:
     taskId: str = field(default_factory=lambda: f"tsk_{uuid4().hex}")
     status: TaskStatus = TaskStatus.WAITING
     steps: list[TaskStep] = field(default_factory=list)
-    createdAt: int = field(default_factory=lambda: int(time_ns()))
+    createdAt: int = field(default_factory=lambda: int(time()))
+    completedAt: int = 0
     outputFolder: Path = field(default_factory=lambda: Path(cfg.downloadFolder.value))
     fileSize: int = 0
     files: list[TaskFile] | None = None
@@ -273,6 +275,8 @@ class Task:
             self.status = TaskStatus.FAILED
         elif all(s == TaskStatus.COMPLETED for s in statuses):
             self.status = TaskStatus.COMPLETED
+            if not self.completedAt:
+                self.completedAt = int(time())
         elif any(s == TaskStatus.RUNNING for s in statuses):
             self.status = TaskStatus.RUNNING
         elif all(s == TaskStatus.PAUSED for s in statuses):
@@ -294,6 +298,7 @@ class Task:
         return self.updateStatus()
 
     def reset(self) -> TaskStatus:
+        self.completedAt = 0
         if not self.steps:
             self.status = TaskStatus.WAITING
             return self.status

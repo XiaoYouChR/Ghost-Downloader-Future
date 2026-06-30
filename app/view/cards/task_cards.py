@@ -241,10 +241,16 @@ class UniversalTaskCard(TaskCard):
                 self.progressBar.hide()
             else:
                 self.progressBar.stop()
-            self._fileMissing = not Path(task.outputPath).exists()
-            self._showStatus(
-                self.tr("文件不存在") if self._fileMissing else self.tr("任务已经完成")
-            )
+            self._fileMissing = task.hasOutputFile and not Path(task.outputPath).exists()
+            if self._fileMissing:
+                statusText = self.tr("文件不存在")
+            elif task.completedAt:
+                from datetime import datetime
+                statusText = self.tr("完成于 {}").format(
+                    datetime.fromtimestamp(task.completedAt).strftime("%Y-%m-%d %H:%M:%S"))
+            else:
+                statusText = self.tr("任务已经完成")
+            self._showStatus(statusText)
             if self._fileMissing:
                 self.statusLabel.setTextColor(QColor(200, 160, 80), QColor(200, 170, 100))
             self.nameLabel.setText(task.name)

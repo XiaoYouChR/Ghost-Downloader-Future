@@ -35,12 +35,14 @@ async function flushQueue(): Promise<void> {
   }
 }
 
-async function sendTaskOrEnqueue<T extends CommandResult>(payload: Record<string, unknown>): Promise<T> {
+async function sendTaskOrEnqueue<T extends CommandResult>(payload: Record<string, unknown>, timeoutMs?: number): Promise<T> {
   if (desktopBridge.isReady()) {
     try {
-      return await desktopBridge.sendRequest<T>(payload);
-    } catch {
-      // Connection lost mid-send — fall through to enqueue.
+      return await desktopBridge.sendRequest<T>(payload, timeoutMs);
+    } catch (error) {
+      if (desktopBridge.isReady()) {
+        throw error;
+      }
     }
   }
   await enqueue(payload);
@@ -509,7 +511,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // chrome-extension:// page, never a tab) may reach the dispatcher. That lets the cast trust
   // the payload, since the popup is the sole, typed caller.
   if (message.type.startsWith("popup_")) {
-    if (!sender.url?.startsWith("chrome-extension://")) { return; }
+    if (!sender.url?.startsWith("chrome-extension://") && !sender.url?.startsWith("moz-extension://")) { return; }
     return sendReply(sendResponse, runPopupCommand(message as PopupCommand));
   }
 });

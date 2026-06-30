@@ -30,6 +30,7 @@ CHUNK_SIZE = 1 << 20
 
 @dataclass(kw_only=True, eq=False)
 class InstallTask(Task):
+    hasOutputFile = False
     installFolder: str = ""
 
     @property
