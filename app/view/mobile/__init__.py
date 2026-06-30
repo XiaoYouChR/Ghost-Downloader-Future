@@ -2,7 +2,7 @@ def setupAndroid() -> None:
     from .device import setupFont, setupTheme
     from .patches import (
         patchDialogWidth, patchFileDialogs, patchGroupTouch,
-        patchIconRendering, patchMenus,
+        patchIconRendering, patchMenus, patchOptionCardLayout,
     )
 
     setupTheme()
@@ -12,3 +12,4 @@ def setupAndroid() -> None:
     patchDialogWidth()
     patchGroupTouch()
     patchMenus()
+    patchOptionCardLayout()

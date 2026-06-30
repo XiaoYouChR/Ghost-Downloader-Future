@@ -42,9 +42,10 @@ def setupEnvironment():
 
 
 def startApp(application):
-    from PySide6.QtCore import Qt, QTranslator
+    from PySide6.QtCore import QTranslator
 
     from app.config.cfg import cfg
+    from app.models.pack import PackConfig
     from app.platform.android_keepalive import keepAlive, REASON_DOWNLOAD, REASON_BROWSER, requestIgnoreBatteryOptimizations
     from app.platform.android_notification import notifyBrowserPaired, notifyBrowserTaskAdded, notifyTaskCompleted, requestNotificationPermission
     from app.services.browser_service import browserService
@@ -66,13 +67,12 @@ def startApp(application):
     import app.assets.resources  # noqa: F401
 
     locale = cfg.language.value.value
-    translator = QTranslator()
+    translator = QTranslator(application)  # 挂到 application: 否则局部变量出栈即被 GC, 翻译失效
     translator.load(locale, "gd3", ".", ":/i18n")
     application.installTranslator(translator)
 
     coroutineRunner.start()
     featureService.load()
-    from app.models.pack import PackConfig
     PackConfig.load()
     taskService.resumeSaved()
     featureService.start()
@@ -115,15 +115,6 @@ def startApp(application):
         keepAlive.holdFor(REASON_BROWSER)
         browserService.start()
 
-    def onApplicationStateChanged(state: Qt.ApplicationState) -> None:
-        if state == Qt.ApplicationState.ApplicationSuspended:
-            mainWindow.setUpdatesEnabled(False)
-        elif state == Qt.ApplicationState.ApplicationActive:
-            mainWindow.setUpdatesEnabled(True)
-            mainWindow.update()
-
-    application.applicationStateChanged.connect(onApplicationStateChanged)
-
     def stopApp():
         taskService.stop()
         taskService.flush()
@@ -139,8 +130,9 @@ if __name__ == "__main__":
     from app.platform.application import SingletonApplication
 
     setupEnvironment()
+    app = SingletonApplication(sys.argv, "gd3")
+    # setupAndroid 须在 QApplication 之后: setupFont 的 QFontDatabase 需要 QGuiApplication
     from app.view.mobile import setupAndroid
     setupAndroid()
-    app = SingletonApplication(sys.argv, "gd3")
     startApp(app)
     sys.exit(app.exec())

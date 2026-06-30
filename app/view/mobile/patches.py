@@ -133,6 +133,84 @@ def patchMenus() -> None:
     RoundMenu.hideEvent = hideEventInWindow
 
 
+def patchOptionCardLayout() -> None:
+    from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+    from qfluentwidgets import ComboBox, LineEdit, Slider
+
+    from app.view.components.card_groups import OptionCardGroup
+
+    MAX_WIDGET_SIZE = (1 << 24) - 1
+    expandingControls = (LineEdit, Slider, ComboBox)
+
+    def reflowToVertical(card: QWidget) -> None:
+        # 窄屏横排会把路径框/滑块挤没
+        layout = card.layout()
+        title = getattr(card, "titleLabel", None)
+        if layout is None or title is None or getattr(card, "_usesMobileLayout", False):
+            return
+
+        controls = []
+        afterTitle = False
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if widget is title:
+                afterTitle = True
+            elif afterTitle and widget is not None:
+                controls.append(widget)
+        if not controls:
+            return
+
+        while layout.count():
+            layout.takeAt(0)
+        QWidget().setLayout(layout)
+
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(24, 8, 24, 8)
+        outer.setSpacing(8)
+
+        titleRow = QHBoxLayout()
+        titleRow.setSpacing(12)
+        icon = getattr(card, "iconWidget", None)
+        if icon is not None:
+            titleRow.addWidget(icon)
+        titleRow.addWidget(title)
+        titleRow.addStretch(1)
+        outer.addLayout(titleRow)
+
+        controlRow = QHBoxLayout()
+        controlRow.setContentsMargins(28, 0, 0, 0)
+        controlRow.setSpacing(8)
+        hasExpanding = False
+        for widget in controls:
+            if isinstance(widget, expandingControls):
+                widget.setMinimumWidth(0)
+                controlRow.addWidget(widget, 1)
+                hasExpanding = True
+            else:
+                controlRow.addWidget(widget, 0)
+        if not hasExpanding:
+            controlRow.addStretch(1)
+        outer.addLayout(controlRow)
+
+        card.setMinimumHeight(0)
+        card.setMaximumHeight(MAX_WIDGET_SIZE)
+        card._usesMobileLayout = True
+
+    originalAdd = OptionCardGroup.addCard
+    originalInsert = OptionCardGroup.insertCard
+
+    def addCard(self, card) -> None:
+        reflowToVertical(card)
+        originalAdd(self, card)
+
+    def insertCard(self, index, card) -> None:
+        reflowToVertical(card)
+        originalInsert(self, index, card)
+
+    OptionCardGroup.addCard = addCard
+    OptionCardGroup.insertCard = insertCard
+
+
 def patchGroupTouch() -> None:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QWidget

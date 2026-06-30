@@ -13,8 +13,6 @@ GHOST_SCALE = 0.40
 GRADIENT_TOP = QColor(201, 198, 226)
 GRADIENT_BOTTOM = QColor(174, 205, 245)
 
-PRESPLASH_BG = QColor(243, 243, 243)
-
 def contentRect(image: QImage) -> QRect:
     width, height = image.width(), image.height()
     minX, minY, maxX, maxY = width, height, 0, 0
@@ -53,24 +51,20 @@ def saveBackgroundIcon() -> None:
     painter.end()
     background.save(str(OUT / "icon_background.png"))
 
-def savePresplashImage() -> None:
-    logo = QImage(str(LOGO))
-    canvas = QImage(1080, 1080, QImage.Format.Format_RGB888)
-    canvas.fill(PRESPLASH_BG)
-    logoSize = 520
+def saveSplashLogo() -> None:
+    # 开屏(windowBackground)居中徽标。用 logo.png 而非裸幽灵: 裸幽灵是白的、浅色开屏底上隐形;
+    # logo.png 自带圆角渐变底深浅都可见, 圆角外透明处由 layer-list 底色层透出(随 values-night 切)。
+    logo = QImage(str(LOGO)).convertToFormat(QImage.Format.Format_ARGB32)
     scaled = logo.scaled(
-        logoSize, logoSize,
+        512, 512,
         Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
-    painter = QPainter(canvas)
-    painter.drawImage((1080 - scaled.width()) // 2, (1080 - scaled.height()) // 2, scaled)
-    painter.end()
-    canvas.save(str(OUT / "presplash.jpg"), "JPEG", 92)
+    scaled.save(str(OUT / "splash_logo.png"))
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     saveForegroundIcon()
     saveBackgroundIcon()
-    savePresplashImage()
+    saveSplashLogo()
     print(f"已生成: {', '.join(p.name for p in sorted(OUT.glob('*')))}")

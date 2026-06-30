@@ -31,32 +31,14 @@ def setupFont() -> None:
     from PySide6.QtGui import QFontDatabase
     from qfluentwidgets import qconfig
 
-    picked = None
-    fontFile = _findSystemFont()
-    if fontFile is not None:
-        loaded = QFontDatabase.applicationFontFamilies(QFontDatabase.addApplicationFont(fontFile))
-        if loaded:
-            picked = loaded[0]
+    # Android 的 Qt 平台字体库启动时已注册全部系统字体, 按名取用即可。
+    # 绝不对系统字体 addApplicationFont: 既多余, 又会在 MIUI 的 MiSans 可变字体上让 Qt 段错误。
+    known = set(QFontDatabase.families())
+    preferred = ("MiSans VF", "MiSans", "OPPO Sans", "OplusSans", "HarmonyOS Sans SC", "vivo Sans")
+    picked = next((name for name in preferred if name in known), None)
 
     logger.info("系统字体: {}", picked or "sans-serif(回退)")
     qconfig.set(qconfig.fontFamilies, [picked, "sans-serif"] if picked else ["sans-serif"], save=False)
-
-
-def _findSystemFont() -> str | None:
-    from pathlib import Path
-    from xml.etree import ElementTree
-
-    config = Path("/system/etc/fonts.xml")
-    if not config.is_file():
-        return None
-
-    fontsDir = Path("/system/fonts")
-    for font in ElementTree.parse(config).getroot().findall("family[1]/font"):
-        name = (font.text or "").strip()
-        target = fontsDir / name
-        if name and target.is_file():
-            return str(target)
-    return None
 
 
 def setupTouchScrolling(window) -> None:
