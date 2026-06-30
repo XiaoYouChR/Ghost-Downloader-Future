@@ -13,7 +13,9 @@ cp -a "$REPO/app" "$STAGE/app"
 cp -a "$REPO/features" "$STAGE/features"
 cp -a "$ANDROID_DIR/main.py" "$STAGE/main.py"
 rm -rf "$STAGE/features/bittorrent_pack"
+rm -rf "$STAGE/features/ed2k_pack"
 rm -rf "$STAGE/features/jack_yao"
+rm -rf "$STAGE/features/yt_dlp_pack"
 find "$STAGE/app" "$STAGE/features" -name "__pycache__" -type d -prune -exec rm -rf {} +
 
 cd "$STAGE"
@@ -24,7 +26,7 @@ find "$STAGE" -name "*.apk" -delete
 BUILD_MARKER="$STAGE/.build_marker"
 touch "$BUILD_MARKER"
 
-export GD3_EXTRA_REQ="${GD3_EXTRA_REQ:-,pyjnius,niquests,urllib3-future,charset-normalizer,idna,h11,wassima,jh2,PySide6-Fluent-Widgets,PySideSix-Frameless-Window,darkdetect,loguru,qrcode,pypng,m3u8,mpegdash,aioftp,gd3ffmpeg}"
+export GD3_EXTRA_REQ="${GD3_EXTRA_REQ:-,pyjnius,wreq,charset-normalizer,idna,PySide6-Fluent-Widgets,PySideSix-Frameless-Window,darkdetect,loguru,qrcode,pypng,m3u8,mpegdash,aioftp,gd3ffmpeg}"
 export GD3_EXTRA_PERM="${GD3_EXTRA_PERM:-,MANAGE_EXTERNAL_STORAGE,POST_NOTIFICATIONS,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS}"
 
 export GD3_ICON="${GD3_ICON:-$REPO/app/assets/logo.png}"

@@ -24,11 +24,14 @@ RUN sed -i "s|deb.debian.org|${APT_MIRROR_HOST}|g" /etc/apt/sources.list.d/debia
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH="/opt/cargo/bin:${PATH}"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable \
+RUN curl --proto '=https' --tlsv1.2 -sSf "${RUSTUP_UPDATE_ROOT}/dist/x86_64-unknown-linux-gnu/rustup-init" -o /tmp/rustup-init \
+    && chmod +x /tmp/rustup-init \
+    && /tmp/rustup-init -y --no-modify-path --default-toolchain stable \
+    && rm /tmp/rustup-init \
     && rustup target add aarch64-linux-android \
     && chmod -R a+rX /opt/rustup /opt/cargo
 
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --timeout 300 --retries 10 \
         "PySide6==${PYSIDE_VERSION}" \
         "buildozer==1.5.0" \
         "cython==0.29.33" \
@@ -84,6 +87,8 @@ RUN git clone --depth 1 -b develop "${P4A_GIT_URL}" /opt/p4a \
     && QTPA=/opt/p4a/pythonforandroid/bootstraps/qt/build/src/main/java/org/kivy/android/PythonActivity.java \
     && sed -i '/protected void onActivityResult(int requestCode, int resultCode, Intent intent) {/a\        super.onActivityResult(requestCode, resultCode, intent);' "$QTPA" \
     && grep -q 'super.onActivityResult' "$QTPA" && echo "[patch] qt PythonActivity super.onActivityResult OK" \
+    && sed -i '/public boolean onKeyDown(int keyCode, KeyEvent event) {/a\        if (keyCode == KeyEvent.KEYCODE_BACK) { moveTaskToBack(true); return true; }' "$QTPA" \
+    && grep -q 'moveTaskToBack' "$QTPA" && echo "[patch] qt PythonActivity 返回键退后台 OK" \
     && QTSTR=/opt/p4a/pythonforandroid/bootstraps/qt/build/templates/strings.tmpl.xml \
     && sed -i '/<item name="android:windowNoTitle">true<\/item>/a\        <item name="android:windowBackground">@color/gd3_splash_bg</item>\n        <item name="android:windowSplashScreenBackground">@color/gd3_splash_bg</item>' "$QTSTR" \
     && sed -i '/<resources>/a\    <color name="gd3_splash_bg">#f3f3f3</color>' "$QTSTR" \
@@ -147,6 +152,11 @@ RUN QTMAN=/opt/p4a/pythonforandroid/bootstraps/qt/build/templates/AndroidManifes
     && grep -q 'background_running' "$QTMAN" \
     && chown -R builder:builder /opt/p4a/pythonforandroid/bootstraps/common/build/src/main/java/org/ghostdownloader \
     && echo "[patch] KeepAliveService + background_running(后台事件循环不挂起) 注入 OK"
+
+# 隔离的新版 cmake 专供 wreq 的 btls-sys/BoringSSL（系统 cmake 3.25 在 NDK toolchain 下 FindThreads 会炸）
+RUN python3 -m venv /opt/cmake4 \
+    && for i in 1 2 3 4 5; do /opt/cmake4/bin/pip install --no-cache-dir --timeout 300 --retries 10 "cmake>=4.0" && break || sleep 5; done \
+    && /opt/cmake4/bin/cmake --version
 
 USER builder
 WORKDIR /work

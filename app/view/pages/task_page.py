@@ -597,10 +597,15 @@ class TaskPage(QWidget):
         super().showEvent(event)
         self._refreshViewport()
 
+    def _createCard(self, task: Task) -> TaskCard | None:
+        return featureService.taskCard(task, self.scrollWidget)
+
     def _onTaskAdded(self, task: Task) -> None:
         if task.taskId in self._cards:
             return
-        card = featureService.taskCard(task, self.scrollWidget)
+        card = self._createCard(task)
+        if card is None:  # 该任务所属 pack 不可用, 跳过渲染
+            return
         card.hide()
         self._cards[task.taskId] = card
         card.setSelectionMode(self._selectionMode)
