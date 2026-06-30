@@ -27,6 +27,8 @@ class ExtensionInstallDialog(MessageBoxBase):
     def _initWidget(self) -> None:
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.widget.setMinimumWidth(PREVIEW_SIZE.width() + 48)  # + viewLayout 左右各 24 边距
+        # viewLayout margins 48 + spacers/spacing 60 + title 28 + steps 168 + buttonGroup 81
+        self.widget.setMinimumHeight(PREVIEW_SIZE.height() + 385)
         self.yesButton.setText(self.tr("打开扩展页面并定位目录"))
         self.cancelButton.setText(self.tr("关闭"))
         self._initPreview()

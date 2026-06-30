@@ -177,15 +177,16 @@ class YtDlpTaskStep(TaskStep):
                 downloaded = toInt(parts[0])
                 total = toInt(parts[1]) or toInt(parts[2])
                 self.speed = toInt(parts[3])
+                self.receivedBytes = self._completedBytes + downloaded
                 if total > 0:
                     if self._totalBytes > 0 and total != self._totalBytes:
                         self._completedBytes += self._totalBytes
+                        self.receivedBytes += self._totalBytes
                     self._totalBytes = total
                     allTotal = self._completedBytes + total
                     if len(self.task.steps) == 1:
                         self.task.fileSize = max(self.task.fileSize, allTotal)
-                    self.progress = min(99.5, (self._completedBytes + downloaded) / allTotal * 100)
-                self.receivedBytes = self._completedBytes + downloaded
+                    self.progress = min(99.5, self.receivedBytes / allTotal * 100)
             return
         self.lastMessage = text[:1000]
 
