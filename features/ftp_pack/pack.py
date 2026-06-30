@@ -91,10 +91,6 @@ class FtpParser(TaskParser):
 
             steps = []
             for file in files:
-                if sourceType == "dir":
-                    outputFile = toPosixPath(options.outputFolder / name / file.relativePath)
-                else:
-                    outputFile = toPosixPath(options.outputFolder / name)
                 steps.append(FtpStep(
                     stepIndex=len(steps) + 1,
                     fileIndex=file.index,
@@ -102,7 +98,6 @@ class FtpParser(TaskParser):
                     fileSize=file.size,
                     canUseRangeRequests=canUseRangeRequests,
                     subworkerCount=options.subworkerCount,
-                    outputFile=outputFile,
                 ))
 
             task = FtpTask(

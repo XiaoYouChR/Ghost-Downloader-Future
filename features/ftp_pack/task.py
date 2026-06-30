@@ -123,16 +123,17 @@ class FtpStep(TaskStep):
     canUseRangeRequests: bool = False
     isAccelerated: bool = False
     subworkerCount: int = 8
-    outputFile: str = ""
-
     def __post_init__(self):
         self.canPause = self.canUseRangeRequests
 
     @property
     def outputPath(self) -> str:
-        if self.outputFile:
-            return self.outputFile
-        return str(self.task.outputFolder / self.task.name)
+        task: FtpTask = self.task
+        if self.fileIndex >= 0 and task.files and task.isFolder:
+            for file in task.files:
+                if file.index == self.fileIndex:
+                    return toPosixPath(task.outputFolder / task.name / file.relativePath)
+        return toPosixPath(task.outputFolder / task.name)
 
     def setOptions(self, options: dict) -> None:
         if "subworkerCount" in options:
@@ -146,11 +147,6 @@ class FtpStep(TaskStep):
     @classmethod
     def fromFile(cls, file: TaskFile, task: Task) -> FtpStep:
         ftpFile: FtpFile = file
-        ftpTask: FtpTask = task
-        if ftpTask.isFolder:
-            outputFile = toPosixPath(task.outputFolder / task.name / ftpFile.relativePath)
-        else:
-            outputFile = toPosixPath(task.outputFolder / task.name)
         return cls(
             stepIndex=file.index + 1,
             fileIndex=file.index,
@@ -158,11 +154,10 @@ class FtpStep(TaskStep):
             fileSize=file.size,
             canUseRangeRequests=True,
             subworkerCount=cfg.preBlockNum.value,
-            outputFile=outputFile,
         )
 
     def _loadRecord(self) -> list[FtpSubworker]:
-        recordPath = Path(self.outputFile + ".ghd")
+        recordPath = Path(self.outputPath + ".ghd")
         if not recordPath.exists():
             return []
         try:
@@ -178,7 +173,7 @@ class FtpStep(TaskStep):
                     index += 1
             return subworkers
         except Exception as e:
-            logger.opt(exception=e).error("恢复 FTP 下载分片失败 {}", self.outputFile)
+            logger.opt(exception=e).error("恢复 FTP 下载分片失败 {}", self.outputPath)
             return []
 
     def _buildSubworkers(self) -> list[FtpSubworker]:
@@ -203,7 +198,7 @@ class FtpStep(TaskStep):
         return subworkers
 
     def _deleteRecord(self) -> None:
-        target = Path(self.outputFile + ".ghd")
+        target = Path(self.outputPath + ".ghd")
         try:
             if target.is_file() or target.is_symlink():
                 target.unlink()
@@ -276,7 +271,7 @@ class FtpStep(TaskStep):
     async def _supervise(self) -> None:
         recordFile = None
         if self.canUseRangeRequests:
-            recordFile = open(self.outputFile + ".ghd", "wb")
+            recordFile = open(self.outputPath + ".ghd", "wb")
         try:
             self.receivedBytes = sum(sw.receivedBytes for sw in self._subworkers)
             while True:
@@ -337,7 +332,7 @@ class FtpStep(TaskStep):
                 except Exception as e:
                     if self._stopping or self.task.status != TaskStatus.RUNNING:
                         raise CancelledError
-                    logger.opt(exception=e).error("{} 的未知大小分片连接中断，5 秒后重试", self.outputFile)
+                    logger.opt(exception=e).error("{} 的未知大小分片连接中断，5 秒后重试", self.outputPath)
                     await asyncio.sleep(FTP_RETRY_DELAY)
                 finally:
                     self._closeTransfer(client, stream)
@@ -363,7 +358,7 @@ class FtpStep(TaskStep):
                 except Exception as e:
                     if self._stopping or self.task.status != TaskStatus.RUNNING:
                         raise CancelledError
-                    logger.opt(exception=e).error("{} 不支持断点续传，已从头开始重试", self.outputFile)
+                    logger.opt(exception=e).error("{} 不支持断点续传，已从头开始重试", self.outputPath)
                     await asyncio.sleep(FTP_RETRY_DELAY)
                 finally:
                     self._closeTransfer(client, stream)
@@ -393,7 +388,7 @@ class FtpStep(TaskStep):
                 except Exception as e:
                     if self._stopping or self.task.status != TaskStatus.RUNNING:
                         raise CancelledError
-                    logger.opt(exception=e).error("{} 的分片连接中断，5 秒后重试", self.outputFile)
+                    logger.opt(exception=e).error("{} 的分片连接中断，5 秒后重试", self.outputPath)
                     await asyncio.sleep(FTP_RETRY_DELAY)
                 finally:
                     self._closeTransfer(client, stream)
@@ -431,7 +426,7 @@ class FtpStep(TaskStep):
         self._stopping = False
         shouldDeleteRecord = False
 
-        Path(self.outputFile).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.outputPath).parent.mkdir(parents=True, exist_ok=True)
 
         restored = False
         if self.canUseRangeRequests:
@@ -448,13 +443,13 @@ class FtpStep(TaskStep):
         openMode = os.O_RDWR | os.O_CREAT
         if not self.canUseRangeRequests:
             openMode |= os.O_TRUNC
-        self._fd = os.open(self.outputFile, openMode, 0o666)
+        self._fd = os.open(self.outputPath, openMode, 0o666)
 
         if not restored and self.fileSize > 0:
             try:
                 ftruncate(self._fd, self.fileSize)
             except Exception as e:
-                logger.opt(exception=e).error("{} 预分配文件大小失败", self.outputFile)
+                logger.opt(exception=e).error("{} 预分配文件大小失败", self.outputPath)
 
         supervisor = asyncio.create_task(self._supervise())
 
@@ -580,12 +575,9 @@ class FtpTask(Task):
             deletePath(Path(self.outputPath))
             return
         for step in self.steps:
-            outputFile = getattr(step, "outputFile", "").strip()
-            if not outputFile:
-                continue
-            target = Path(outputFile)
+            target = Path(step.outputPath)
             deletePath(target)
-            deletePath(Path(str(target) + ".ghd"))
+            deletePath(Path(f"{target}.ghd"))
 
     def _isStepSelected(self, step) -> bool:
         if not self.files:

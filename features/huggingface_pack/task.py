@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.models.task import Task, TaskFile, TaskStep
+from app.platform.filesystem import deletePath
 
 from features.http_pack.task import HttpTaskStep
 
@@ -16,6 +18,19 @@ class HuggingFaceFile(TaskFile):
 class HuggingFaceStep(HttpTaskStep):
     fileIndex: int = -1
 
+    @property
+    def outputPath(self) -> str:
+        if self.fileIndex >= 0 and self.task.files:
+            for file in self.task.files:
+                if file.index == self.fileIndex:
+                    return str(self.task.outputFolder / file.relativePath)
+        return super().outputPath
+
+    def deleteFiles(self) -> None:
+        path = Path(self.outputPath)
+        deletePath(path)
+        deletePath(Path(f"{path}.ghd"))
+
     @classmethod
     def fromFile(cls, file: TaskFile, task: Task) -> TaskStep:
         from app.config.cfg import cfg
@@ -28,13 +43,13 @@ class HuggingFaceStep(HttpTaskStep):
             subworkerCount=cfg.preBlockNum.value,
             canUseRangeRequests=file.size > 0,
             fileIndex=file.index,
-            outputFile=str(task.outputFolder / file.relativePath),
         )
 
 
 @dataclass(kw_only=True, eq=False)
 class HuggingFaceTask(Task):
     packId: str = "huggingface"
+    canEdit = True
     fileType = HuggingFaceFile
     stepType = HuggingFaceStep
     repoId: str = ""
@@ -44,3 +59,9 @@ class HuggingFaceTask(Task):
     @property
     def countSelected(self) -> int:
         return sum(1 for f in self.files if f.selected) if self.files else 0
+
+    def deleteFiles(self) -> None:
+        for step in self.steps:
+            step.deleteFiles()
+        if self.files:
+            deletePath(Path(self.outputFolder / self.name))

@@ -64,64 +64,55 @@ class HuggingFaceParser(TaskParser):
         if info is None:
             raise ValueError("无法解析 HuggingFace 链接")
 
-        org = info["org"]
-        repo = info["repo"]
+        repoId = f"{info['org']}/{info['repo']}"
         repoType = info["repoType"]
         revision = info["revision"]
         filePath = info["filePath"]
-        repoId = f"{org}/{repo}"
-        headers = self._buildHeaders()
 
-        if filePath:
-            return await self._parseSingleFile(options, repoId, repoType, revision, filePath, headers)
-
-        return await self._parseRepo(options, repoId, repoType, revision, headers)
-
-    async def _parseSingleFile(
-        self, options: TaskOptions, repoId: str, repoType: str,
-        revision: str, filePath: str, headers: dict[str, str],
-    ) -> Task:
-        downloadUrl = self._fileUrl(repoId, repoType, revision, filePath)
-        fileName = filePath.rsplit("/", 1)[-1]
-        name = toSafeFilename(fileName, fallback="download")
-
-        client = buildClient(headers=headers)
-        try:
-            response = await client.head(downloadUrl)
-            fileSize = 0
-            cl = response.headers.get("content-length")
-            if cl:
-                fileSize = int(cl.decode() if isinstance(cl, bytes) else cl)
-            canUseRange = response.headers.contains_key("accept-ranges")
-        finally:
-            client.close()
+        headers: dict[str, str] = {}
+        token = accessToken()
+        if token:
+            headers["authorization"] = f"Bearer {token}"
 
         from app.config.cfg import cfg
-        task = HuggingFaceTask(
-            name=name,
-            url=options.url,
-            fileSize=fileSize,
-            outputFolder=options.outputFolder,
-            repoId=repoId,
-            repoType=repoType,
-            revision=revision,
-        )
-        task.addStep(HttpTaskStep(
-            stepIndex=1,
-            url=downloadUrl,
-            fileSize=fileSize,
-            headers=headers,
-            subworkerCount=cfg.preBlockNum.value,
-            canUseRangeRequests=canUseRange,
-        ))
-        return task
 
-    async def _parseRepo(
-        self, options: TaskOptions, repoId: str, repoType: str,
-        revision: str, headers: dict[str, str],
-    ) -> Task:
+        if filePath:
+            downloadUrl = self._fileUrl(repoId, repoType, revision, filePath)
+            name = toSafeFilename(filePath.rsplit("/", 1)[-1], fallback="download")
+
+            client = buildClient(headers=headers)
+            try:
+                response = await client.head(downloadUrl)
+                fileSize = 0
+                cl = response.headers.get("content-length")
+                if cl:
+                    fileSize = int(cl.decode() if isinstance(cl, bytes) else cl)
+                canUseRange = response.headers.contains_key("accept-ranges")
+            finally:
+                client.close()
+
+            task = HuggingFaceTask(
+                name=name,
+                url=options.url,
+                fileSize=fileSize,
+                outputFolder=options.outputFolder,
+                repoId=repoId,
+                repoType=repoType,
+                revision=revision,
+            )
+            task.addStep(HttpTaskStep(
+                stepIndex=1,
+                url=downloadUrl,
+                fileSize=fileSize,
+                headers=headers,
+                subworkerCount=cfg.preBlockNum.value,
+                canUseRangeRequests=canUseRange,
+            ))
+            return task
+
         apiPrefix = {"dataset": "datasets", "space": "spaces"}.get(repoType, "models")
-        apiUrl = f"{self._apiBase()}/api/{apiPrefix}/{repoId}/tree/{revision}"
+        base = selectedProxySite() or API_BASE
+        apiUrl = f"{base}/api/{apiPrefix}/{repoId}/tree/{revision}"
 
         client = buildClient(headers=headers)
         try:
@@ -132,7 +123,6 @@ class HuggingFaceParser(TaskParser):
         if not entries:
             raise ValueError(f"仓库 {repoId} 为空或无法访问")
 
-        from app.config.cfg import cfg
         files: list[HuggingFaceFile] = []
         for i, entry in enumerate(entries):
             path = entry.get("path", "")
@@ -147,14 +137,13 @@ class HuggingFaceParser(TaskParser):
                 downloadUrl=self._fileUrl(repoId, repoType, revision, path),
             ))
 
-        totalSize = sum(f.size for f in files)
         repoName = toSafeFilename(repoId.replace("/", "_"), fallback="huggingface")
 
         task = HuggingFaceTask(
             name=repoName,
             url=options.url,
-            fileSize=totalSize,
-            outputFolder=options.outputFolder / repoName,
+            fileSize=sum(f.size for f in files),
+            outputFolder=options.outputFolder,
             repoId=repoId,
             repoType=repoType,
             revision=revision,
@@ -170,7 +159,6 @@ class HuggingFaceParser(TaskParser):
                 subworkerCount=cfg.preBlockNum.value,
                 canUseRangeRequests=file.size > 0,
                 fileIndex=file.index,
-                outputFile=str(options.outputFolder / repoName / file.relativePath),
             ))
 
         return task
@@ -197,21 +185,10 @@ class HuggingFaceParser(TaskParser):
                 break
         return entries
 
-    def _buildHeaders(self) -> dict[str, str]:
-        headers: dict[str, str] = {}
-        token = accessToken()
-        if token:
-            headers["authorization"] = f"Bearer {token}"
-        return headers
-
     def _fileUrl(self, repoId: str, repoType: str, revision: str, filePath: str) -> str:
-        base = self._apiBase()
+        base = selectedProxySite() or API_BASE
         typePrefix = {"dataset": "datasets/", "space": "spaces/"}.get(repoType, "")
         return f"{base}/{typePrefix}{repoId}/resolve/{revision}/{filePath}"
-
-    def _apiBase(self) -> str:
-        proxySite = selectedProxySite()
-        return proxySite if proxySite else API_BASE
 
 
 class HuggingFacePack(FeaturePack):

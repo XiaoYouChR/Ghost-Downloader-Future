@@ -1,7 +1,9 @@
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QFont, QPainter
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
-from qfluentwidgets import ScrollArea, setFont, isDarkTheme
+from PySide6.QtWidgets import QHBoxLayout, QWidget, QVBoxLayout, QLabel, QSizePolicy
+from qfluentwidgets import CaptionLabel, ScrollArea, setFont, isDarkTheme
+
+from app.format import toReadableSize
 
 
 class TitledCardGroup(QWidget):
@@ -49,9 +51,55 @@ class DraftCardGroup(TitledCardGroup):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._cardByUrl: dict[str, QWidget] = {}
+
+        self._ratioLabel = CaptionLabel("", self)
+        self._ratioLabel.setTextColor(QColor(196, 53, 1), QColor(252, 169, 3))
+        self._sizeLabel = CaptionLabel("", self)
+        for label in (self._ratioLabel, self._sizeLabel):
+            setFont(label, 13)
+            label.setFixedHeight(30)
+            label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            label.hide()
+
+        self._rightPad = QLabel("  ", self)
+        setFont(self._rightPad, 15, QFont.Weight.DemiBold)
+        self._rightPad.setFixedHeight(30)
+
+        self.layout().removeWidget(self.headerLabel)
+        headerRow = QHBoxLayout()
+        headerRow.setContentsMargins(0, 0, 0, 0)
+        headerRow.setSpacing(8)
+        headerRow.addWidget(self.headerLabel, 1)
+        headerRow.addWidget(self._ratioLabel)
+        headerRow.addWidget(self._sizeLabel)
+        headerRow.addWidget(self._rightPad)
+        self.layout().insertLayout(0, headerRow)
+
         self.setTitle(self.tr("解析结果"))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def updateStats(self, successCount: int, failCount: int, totalSize: int) -> None:
+        totalCount = successCount + failCount
+        if totalCount == 0:
+            self._ratioLabel.hide()
+            self._sizeLabel.hide()
+            return
+
+        if failCount > 0:
+            self._ratioLabel.setText(f"{successCount}/{totalCount}")
+            self._ratioLabel.show()
+        else:
+            self._ratioLabel.hide()
+
+        if totalSize > 0:
+            self._sizeLabel.setText(toReadableSize(totalSize))
+            self._sizeLabel.show()
+        elif successCount > 0:
+            self._sizeLabel.setText(self.tr("{0} 个任务").format(successCount))
+            self._sizeLabel.show()
+        else:
+            self._sizeLabel.hide()
 
     def addCard(self, url: str, card: QWidget) -> None:
         self._cardByUrl[url] = card

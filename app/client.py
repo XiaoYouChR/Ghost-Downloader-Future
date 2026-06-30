@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import sys
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from wreq import Client, Emulation, Proxy
@@ -10,6 +11,9 @@ from wreq.emulation import Platform, Profile
 from wreq.redirect import Policy
 
 from app.config.cfg import cfg, proxy
+
+if TYPE_CHECKING:
+    from wreq import ClientConfig3
 
 FALLBACK_PROFILE = "chrome"
 
@@ -78,7 +82,7 @@ def buildClient(
     timeout: int | None = None,
 ) -> Client:
     resolved = toEmulation("") if emulation is ... else emulation
-    config: dict = {"tls_verify": cfg.shouldVerifySsl.value, "redirect": Policy.limited(10)}
+    config: ClientConfig = {"tls_verify": cfg.shouldVerifySsl.value, "redirect": Policy.limited(10)}
 
     url = proxy()
     if url:

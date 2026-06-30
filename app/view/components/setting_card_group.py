@@ -78,7 +78,7 @@ class CollapsibleSettingCardGroup(QWidget):
         FluentStyleSheet.SETTING_CARD_GROUP.apply(self)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
-        self._collapsed = self.objectName() in cfg.collapsedSettingGroups.value
+        self._collapsed = self.objectName() not in cfg.expandedSettingGroups.value
         self.cardContainer.setMaximumHeight(0 if self._collapsed else QWIDGETSIZE_MAX)
         self.expandButton.setIcon(FluentIcon.CHEVRON_RIGHT_MED if self._collapsed else FluentIcon.CHEVRON_DOWN_MED)
 
@@ -153,12 +153,12 @@ class CollapsibleSettingCardGroup(QWidget):
     def _onExpandClicked(self) -> None:
         self._setCollapsed(not self._collapsed)
         key = self.objectName()
-        items = list(cfg.collapsedSettingGroups.value)
-        if self._collapsed and key not in items:
+        items = list(cfg.expandedSettingGroups.value)
+        if not self._collapsed and key not in items:
             items.append(key)
-        elif not self._collapsed and key in items:
+        elif self._collapsed and key in items:
             items.remove(key)
-        cfg.set(cfg.collapsedSettingGroups, items)
+        cfg.set(cfg.expandedSettingGroups, items)
 
     def _setCollapsed(self, collapsed: bool) -> None:
         self._collapsed = collapsed

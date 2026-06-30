@@ -56,6 +56,14 @@ def _registerLinux(fileTypes: list[FileType]) -> None:
 
     mimes = {ft.mimeType for ft in fileTypes}
 
+    # Preserve URL scheme handlers registered by url_scheme.py
+    if desktopFile.exists():
+        for line in desktopFile.read_text(encoding="utf-8").splitlines():
+            if line.startswith("MimeType="):
+                for m in line[9:].rstrip(";").split(";"):
+                    if m.startswith("x-scheme-handler/"):
+                        mimes.add(m)
+
     if not mimes:
         desktopFile.unlink(missing_ok=True)
         serviceFile.unlink(missing_ok=True)
@@ -69,7 +77,7 @@ def _registerLinux(fileTypes: list[FileType]) -> None:
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=Ghost Downloader\n"
-        f"Exec={appPath} %F\n"
+        f"Exec={appPath} %U\n"
         "Icon=ghost-downloader\n"
         "Terminal=false\n"
         "Categories=Network;Utility;\n"

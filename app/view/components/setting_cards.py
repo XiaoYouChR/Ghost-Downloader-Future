@@ -53,11 +53,13 @@ class SpinBoxSettingCard(SettingCard):
 class LineEditSettingCard(SettingCard):
 
     def __init__(self, icon, title: str, content: str = "",
-                 configItem: ConfigItem = None, parent=None, placeholder: str = ""):
+                 configItem: ConfigItem = None, parent=None,
+                 placeholder: str = "", isPassword: bool = False):
         super().__init__(icon, title, content, parent)
         self._configItem = configItem
 
-        self.lineEdit = LineEdit(self)
+        from qfluentwidgets import PasswordLineEdit
+        self.lineEdit = PasswordLineEdit(self) if isPassword else LineEdit(self)
         self.lineEdit.setMinimumWidth(180)
         self.lineEdit.setClearButtonEnabled(True)
         self.lineEdit.setPlaceholderText(placeholder)

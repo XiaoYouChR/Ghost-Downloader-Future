@@ -70,12 +70,14 @@ class TaskDraftDialog(MessageBoxBase):
         self._isStandalone = False
         self._dragPos = QPoint()
         self._cardByUrl: dict[str, object] = {}
+        self._failCount = 0
 
         self.titleLabel = SubtitleLabel(self.tr("添加任务"), self)
         self.urlEdit = AutoSizingEdit(self)
         self.progressBar = IndeterminateProgressBar(self)
         self.draftGroup = DraftCardGroup(self)
         self.optionGroup = OptionCardGroup(self)
+        self.batchButton = PushButton(FluentIcon.COPY, self.tr("批量添加"), self)
         self.importButton = PushButton(FluentIcon.FOLDER_ADD, self.tr("导入文件"), self)
         self.headerLayout = QHBoxLayout()
 
@@ -102,6 +104,7 @@ class TaskDraftDialog(MessageBoxBase):
     def _initLayout(self) -> None:
         self.headerLayout.addWidget(self.titleLabel)
         self.headerLayout.addStretch(1)
+        self.headerLayout.addWidget(self.batchButton)
         self.headerLayout.addWidget(self.importButton)
         self.viewLayout.addLayout(self.headerLayout)
         self.viewLayout.addWidget(self.urlEdit)
@@ -120,6 +123,7 @@ class TaskDraftDialog(MessageBoxBase):
         self._draft.itemsChanged.connect(self._onItemsChanged)
         self._draft.itemsCleared.connect(self._onCleared)
 
+        self.batchButton.clicked.connect(self._onBatchClicked)
         self.importButton.clicked.connect(self._onImportClicked)
 
     def showStandalone(self) -> None:
@@ -180,7 +184,9 @@ class TaskDraftDialog(MessageBoxBase):
         self.optionGroup.reset()
         self._parseTimer.stop()
         self._cardByUrl.clear()
+        self._failCount = 0
         self.draftGroup.clear()
+        self.draftGroup.updateStats(0, 0, 0)
 
         if self._isStandalone:
             self._standaloneWrapper.hide()
@@ -240,6 +246,7 @@ class TaskDraftDialog(MessageBoxBase):
         card.editRequested.connect(lambda u=url: self._onEditRequested(u))
         self.draftGroup.addCard(url, card)
         self._cardByUrl[url] = card
+        self._refreshStats()
 
     def _onEditRequested(self, url: str) -> None:
         from app.view.dialogs.edit_task import DraftEditDialog
@@ -251,27 +258,46 @@ class TaskDraftDialog(MessageBoxBase):
         dialog.exec()
 
     def _onParseFailed(self, url: str, error: str) -> None:
+        self._failCount += 1
+        self._refreshStats()
         displayUrl = url if len(url) <= 48 else f"{url[:45]}..."
         InfoBar.error(
             self.tr("链接解析失败"),
             f"{displayUrl}\n{error}",
-            duration=-1,
+            duration=5000,
             position=InfoBarPosition.BOTTOM_RIGHT,
             parent=self,
         )
 
     def _onItemsChanged(self) -> None:
         self.draftGroup.setUrls(self._draft.urls())
+        self._refreshStats()
 
     def _onCleared(self) -> None:
         self._cardByUrl.clear()
+        self._failCount = 0
         self.draftGroup.clear()
+        self.draftGroup.updateStats(0, 0, 0)
+
+    def _refreshStats(self) -> None:
+        tasks = [self._draft.taskByUrl(url) for url in self._draft.urls()]
+        successCount = sum(1 for t in tasks if t is not None)
+        totalSize = sum(t.fileSize for t in tasks if t is not None and t.fileSize > 0)
+        self.draftGroup.updateStats(successCount, self._failCount, totalSize)
 
     def _urls(self) -> list[str]:
         text = self.urlEdit.toPlainText()
         if not text:
             return []
         return [line.strip() for line in text.splitlines() if line.strip()]
+
+    def _onBatchClicked(self) -> None:
+        from app.view.dialogs.batch_url import BatchUrlDialog
+        parent = self._standaloneWrapper if self._isStandalone else self.window()
+        dialog = BatchUrlDialog(parent)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.addUrls(dialog.urls())
+        dialog.deleteLater()
 
     def _onImportClicked(self) -> None:
         globs = [f"*{ext}" for ft in self._fileTypes for ext in ft.extensions]

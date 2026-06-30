@@ -9,13 +9,14 @@ from loguru import logger
 
 from app.config.constants import DESKTOP_ID, DESKTOP_OBJECT_PATH
 from app.platform.android import IS_ANDROID
+from app.platform.url_scheme import isLaunchUri
 from app.signal_bus import signalBus
 
 
 def fileUrisFromArgv(argv: list[str]) -> list[str]:
     uris = []
     for arg in argv[1:]:
-        if arg.startswith("-"):
+        if arg.startswith("-") or isLaunchUri(arg):
             continue
         path = Path(arg)
         if path.is_file():
@@ -52,7 +53,9 @@ class SingletonApplication(QApplication):
     def event(self, e: QEvent) -> bool:
         if isinstance(e, QFileOpenEvent):
             uri = e.url().toString() if not e.url().isEmpty() else Path(e.file()).as_uri()
-            if uri:
+            if uri and isLaunchUri(uri):
+                signalBus.activationRequested.emit()
+            elif uri:
                 signalBus.openFileRequested.emit([uri])
             return True
 
@@ -164,6 +167,9 @@ if sys.platform == "linux":
     class _DesktopBusReceiver(QObject):
         @Slot("QStringList", "QVariantMap")
         def Open(self, uris, platformData):
+            if any(isLaunchUri(u) for u in uris):
+                signalBus.activationRequested.emit()
+                return
             uris = [uri for uri in uris if uri]
             if uris:
                 signalBus.openFileRequested.emit(uris)

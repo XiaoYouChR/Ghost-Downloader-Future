@@ -101,6 +101,13 @@ def startApp(application):
     browserService.taskDraftRequested.connect(onBrowserTaskDraftRequested)
     browserService.pairRequested.connect(onBrowserPairRequested)
 
+    from app.services.aria2_rpc import aria2RpcServer
+    aria2RpcServer.taskDraftRequested.connect(onBrowserTaskDraftRequested)
+    if cfg.isAria2RpcEnabled.value:
+        aria2RpcServer.start()
+    cfg.isAria2RpcEnabled.valueChanged.connect(aria2RpcServer.setEnabled)
+    cfg.aria2RpcPort.valueChanged.connect(aria2RpcServer.setPort)
+
     cfg.isBrowserExtensionEnabled.valueChanged.connect(
         lambda enabled: keepAlive.holdFor(REASON_BROWSER) if enabled else keepAlive.release(REASON_BROWSER)
     )
@@ -121,6 +128,7 @@ def startApp(application):
         taskService.stop()
         taskService.flush()
         browserService.stop()
+        aria2RpcServer.stop()
         featureService.stop()
         coroutineRunner.stop()
 

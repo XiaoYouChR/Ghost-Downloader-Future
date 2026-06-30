@@ -163,6 +163,12 @@ class BrowserService(QObject):
         if self._server.isListening():
             self._server.close()
 
+    def setEnabled(self, enabled: bool) -> None:
+        if enabled:
+            self.start()
+        else:
+            self.stop()
+
     def approvePair(self, session: BrowserClientSession, requestId: str) -> None:
         self._send(session, {
             "type": MessageType.PAIR_RESULT,

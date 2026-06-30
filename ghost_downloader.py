@@ -5,7 +5,7 @@ from loguru import logger
 
 from app.config.paths import APP_DATA_DIR
 
-logger.add(f"{APP_DATA_DIR}/GhostDownloader.log", rotation="512 KB", enqueue=True)
+logger.add(f"{APP_DATA_DIR}/GhostDownloader.log", rotation="512 KB", enqueue=False)
 
 
 def _exceptionHook(exceptionType, value, tb):
@@ -33,6 +33,14 @@ def setupEnvironment():
     patchFluentLabelThemeChanged()
     qconfig.themeChanged.connect(IconBodyLabel.clearCache)
     qconfig.load(f"{APP_DATA_DIR}/UserConfig.json", cfg)
+
+    if sys.platform == "win32":
+        from PySide6.QtGui import QFont
+        from PySide6.QtWidgets import QApplication
+        font = QFont()
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+        QApplication.setFont(font)
+
     logger.info("Ghost Downloader v{} launched", VERSION)
 
 
@@ -129,17 +137,21 @@ def startApp(application, isSilent=False):
                         duration=3000, position=InfoBarPosition.BOTTOM_RIGHT, parent=w)
 
     browserService.extensionUpdated.connect(onExtensionUpdated)
+    if cfg.isBrowserExtensionEnabled.value:
+        browserService.start()
+    cfg.isBrowserExtensionEnabled.valueChanged.connect(browserService.setEnabled)
+
+    from app.services.aria2_rpc import aria2RpcServer
+    aria2RpcServer.taskDraftRequested.connect(onBrowserDraft)
+    if cfg.isAria2RpcEnabled.value:
+        aria2RpcServer.start()
+    cfg.isAria2RpcEnabled.valueChanged.connect(aria2RpcServer.setEnabled)
+    cfg.aria2RpcPort.valueChanged.connect(aria2RpcServer.setPort)
 
     clipboardListener = ClipboardListener(parent=application)
     cfg.isClipboardListenerEnabled.valueChanged.connect(clipboardListener.setEnabled)
     clipboardListener.setEnabled(cfg.isClipboardListenerEnabled.value)
     clipboardListener.urlsDetected.connect(lambda urls: show().addUrls(urls))
-
-    if cfg.isBrowserExtensionEnabled.value:
-        browserService.start()
-    cfg.isBrowserExtensionEnabled.valueChanged.connect(
-        lambda enabled: browserService.start() if enabled else browserService.stop()
-    )
 
     if sys.platform == "darwin":
         from app.view.shell.mac_status_item import MacStatusItem
@@ -182,6 +194,7 @@ def startApp(application, isSilent=False):
         taskService.stop()
         taskService.flush()
         browserService.stop()
+        aria2RpcServer.stop()
         featureService.stop()
         coroutineRunner.stop()
 
