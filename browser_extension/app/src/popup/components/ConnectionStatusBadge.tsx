@@ -1,18 +1,39 @@
-import {Badge, Spinner} from "@fluentui/react-components";
-import {CheckmarkCircleRegular, PlugDisconnectedRegular, WarningRegular,} from "@fluentui/react-icons";
+import {Badge, Button, makeStyles, Spinner} from "@fluentui/react-components";
+import {
+    CheckmarkCircleRegular,
+    OpenRegular,
+    PlugDisconnectedRegular,
+    WarningRegular,
+} from "@fluentui/react-icons";
 
 import type {DesktopConnectionState} from "../../shared/types";
 import {connectionLabel, connectionTone} from "../../shared/utils";
 import {toneToBadgeColor} from "../fluent";
 
+const useStyles = makeStyles({
+  root: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+});
+
 export function ConnectionStatusBadge({
   state,
   message,
+  pendingCount,
+  onLaunchDesktop,
 }: {
   state: DesktopConnectionState;
   message: string;
+  pendingCount?: number;
+  onLaunchDesktop?: () => void;
 }) {
+  const styles = useStyles();
   const tone = connectionTone(state);
+  const isOffline = state !== "connected" && state !== "connecting" && state !== "authenticating";
+  const hasPending = (pendingCount ?? 0) > 0;
+
   const label = state === "connected" ? "已连接" : connectionLabel(state, message);
   const icon =
     tone === "info" ? (
@@ -25,14 +46,28 @@ export function ConnectionStatusBadge({
       <PlugDisconnectedRegular />
     );
 
+  const badgeText = hasPending ? `${label} · ${pendingCount} 排队` : label;
+
   return (
-    <Badge
-      appearance={tone === "neutral" ? "outline" : "tint"}
-      color={toneToBadgeColor(tone)}
-      icon={icon}
-      size="large"
-    >
-      {label}
-    </Badge>
+    <div className={styles.root}>
+      <Badge
+        appearance={tone === "neutral" ? "outline" : "tint"}
+        color={toneToBadgeColor(tone)}
+        icon={icon}
+        size="large"
+      >
+        {badgeText}
+      </Badge>
+      {isOffline && onLaunchDesktop && (
+        <Button
+          appearance="subtle"
+          icon={<OpenRegular />}
+          size="small"
+          onClick={onLaunchDesktop}
+        >
+          启动
+        </Button>
+      )}
+    </div>
   );
 }

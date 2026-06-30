@@ -37,7 +37,7 @@ export type VisualKind =
   | "image"
   | "stream";
 type ResourceParserHint = "m3u8" | "mpd" | "media" | "download" | "other";
-type ResourceDeliveryTarget = "gd3" | "browser_download";
+type ResourceDeliveryTarget = "desktop" | "browser_download";
 type ResourceMediaKind = "video" | "audio" | "";
 
 interface ResourcePresentation {
@@ -288,16 +288,25 @@ function visualKindOf({
   extension,
   mime,
   parserHint,
+  filename,
+  url,
 }: {
   extension: string;
   mime?: string;
   parserHint?: ResourceParserHint;
+  filename?: string;
+  url?: string;
 }): VisualKind {
   const loweredMime = mime?.toLowerCase() ?? "";
   const loweredExtension = extension.toLowerCase();
 
   if (parserHint === "m3u8" || parserHint === "mpd") {
     return "stream";
+  }
+  if (loweredExtension === "m4s" && filename && url) {
+    const role = dashTrackRoleOf(filename, url);
+    if (role === "audio") { return "audio"; }
+    if (role === "video") { return "video"; }
   }
   if (loweredMime.startsWith("video/") || CAT_CATCH_VIDEO_EXTENSIONS.has(loweredExtension)) {
     return "video";
@@ -338,7 +347,7 @@ function resourcePresentationParts(resource: Resource): {
   return {
     extension,
     parserHint: parserHintOf(resource.url, resource.mime, extension),
-    deliveryTarget: resource.url.startsWith("blob:") ? "browser_download" : "gd3",
+    deliveryTarget: resource.url.startsWith("blob:") ? "browser_download" : "desktop",
     mediaKind: mediaKindOf(resource, extension),
   };
 }
@@ -368,16 +377,14 @@ export function describeResource(resource: Resource): ResourcePresentation {
   const mime = resource.mime.toLowerCase();
 
   let category: ResourceFilter = "all";
-  if (parts.parserHint === "m3u8" || parts.parserHint === "mpd") {
-    category = "streaming";
+  if (parts.parserHint === "m3u8" || parts.parserHint === "mpd" || parts.mediaKind === "video") {
+    category = "video";
   } else if (parts.mediaKind === "audio") {
     category = "audio";
-  } else if (parts.mediaKind === "video") {
-    category = "video";
   }
 
   const primaryBadge = resourcePrimaryBadge(resource, parts);
-  const needsDesktop = parts.deliveryTarget === "gd3";
+  const needsDesktop = parts.deliveryTarget === "desktop";
   const statusText = resource.sentToDesktopAt
     ? needsDesktop
       ? "已发送到 Ghost Downloader"
@@ -387,26 +394,21 @@ export function describeResource(resource: Resource): ResourcePresentation {
       : "浏览器下载";
 
   const tags = [primaryBadge];
-  tags.push(parts.deliveryTarget === "browser_download" ? "浏览器下载" : "GD3");
-  if (!resource.sentToDesktopAt && (parts.parserHint === "m3u8" || parts.parserHint === "mpd")) {
-    tags.push("流媒体");
+  if (parts.deliveryTarget === "browser_download") {
+    tags.push("浏览器下载");
   }
-  if (
-    !resource.sentToDesktopAt
-    && resource.requestHeaders
-    && Object.keys(resource.requestHeaders).length > 0
-    && (parts.parserHint === "m3u8" || parts.parserHint === "mpd")
-  ) {
-    tags.push("需请求头");
-  }
-  if (!resource.sentToDesktopAt && (parts.parserHint === "download" || parts.parserHint === "media")) {
-    tags.push("可直接下载");
+  if (isDashSegment(resource)) {
+    const role = dashTrackRoleOf(resource.filename, resource.url);
+    if (role === "video") { tags.push("视频轨"); }
+    else if (role === "audio") { tags.push("音频轨"); }
   }
   const visual: ResourcePresentation["visual"] = {
     kind: visualKindOf({
       extension: parts.extension,
       mime,
       parserHint: parts.parserHint,
+      filename: resource.filename,
+      url: resource.url,
     }),
   };
 
@@ -437,7 +439,7 @@ export function isDashSegment(resource: Resource): boolean {
 
 export function canUseOnlineMerge(resource: Resource): boolean {
   const parts = resourcePresentationParts(resource);
-  if (parts.deliveryTarget !== "gd3") {
+  if (parts.deliveryTarget !== "desktop") {
     return false;
   }
 

@@ -44,6 +44,8 @@ function createManifest(target) {
       },
     };
     delete manifest.minimum_chrome_version;
+    delete manifest.side_panel;
+    manifest.permissions = manifest.permissions.filter(p => p !== "sidePanel");
     return manifest;
   }
 

@@ -1,6 +1,6 @@
 import type {SelectTabData, SwitchOnChangeData} from "@fluentui/react-components";
 import {Button, Divider, makeStyles, Switch, Tab, TabList} from "@fluentui/react-components";
-import {ArrowDownloadRegular, GlobeRegular, SettingsRegular, WrenchRegular,} from "@fluentui/react-icons";
+import {ArrowDownloadRegular, GlobeRegular, ImageRegular, SettingsRegular, WrenchRegular,} from "@fluentui/react-icons";
 
 import type {DesktopConnectionState, PopupView} from "../../shared/types";
 import {ConnectionStatusBadge} from "./ConnectionStatusBadge";
@@ -44,13 +44,14 @@ const useStyles = makeStyles({
 });
 
 const NAV_ITEMS: Array<{
-  key: Extract<PopupView, "tasks" | "resources" | "advanced">;
+  key: Extract<PopupView, "tasks" | "resources" | "images" | "advanced">;
   label: string;
   icon: JSX.Element;
 }> = [
-  { key: "tasks", label: "下载任务", icon: <ArrowDownloadRegular /> },
-  { key: "resources", label: "资源嗅探", icon: <GlobeRegular /> },
-  { key: "advanced", label: "高级功能", icon: <WrenchRegular /> },
+  { key: "tasks", label: "任务", icon: <ArrowDownloadRegular /> },
+  { key: "resources", label: "资源", icon: <GlobeRegular /> },
+  { key: "images", label: "图片", icon: <ImageRegular /> },
+  { key: "advanced", label: "高级", icon: <WrenchRegular /> },
 ];
 
 export function Header({
@@ -61,9 +62,11 @@ export function Header({
   isMediaButtonBusy,
   shouldTakeDownloads,
   isTakeDownloadsBusy,
+  pendingTaskCount,
   onViewChange,
   onMediaButtonToggle,
   onTakeDownloadsToggle,
+  onLaunchDesktop,
 }: {
   currentView: PopupView;
   connectionState: DesktopConnectionState;
@@ -72,9 +75,11 @@ export function Header({
   isMediaButtonBusy?: boolean;
   shouldTakeDownloads: boolean;
   isTakeDownloadsBusy?: boolean;
+  pendingTaskCount: number;
   onViewChange: (view: PopupView) => void;
   onMediaButtonToggle: (enabled: boolean) => void;
   onTakeDownloadsToggle: (enabled: boolean) => void;
+  onLaunchDesktop: () => void;
 }) {
   const styles = useStyles();
 
@@ -103,7 +108,12 @@ export function Header({
       </div>
 
       <div className={styles.bottomRow}>
-        <ConnectionStatusBadge state={connectionState} message={connectionMessage} />
+        <ConnectionStatusBadge
+          state={connectionState}
+          message={connectionMessage}
+          pendingCount={pendingTaskCount}
+          onLaunchDesktop={onLaunchDesktop}
+        />
 
         <div className={styles.switches}>
           <Switch

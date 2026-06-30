@@ -110,13 +110,11 @@ function panelMessage(playbackState: MediaPlaybackState) {
 export function MediaControlPanel({
   mediaItems,
   playbackState,
-  busy,
   onChangeMedia,
   onAction,
 }: {
   mediaItems: MediaItemOption[];
   playbackState: MediaPlaybackState;
-  busy?: boolean;
   onChangeMedia: (index: number) => void;
   onAction: (action: MediaAction, value?: number | boolean) => void;
 }) {
@@ -171,7 +169,7 @@ export function MediaControlPanel({
         <Field className={styles.selectField} label="选择媒体">
           <Select
             className={styles.selectControl}
-            disabled={busy || mediaItems.length === 0}
+            disabled={mediaItems.length === 0}
             value={playbackState.mediaIndex >= 0 ? String(playbackState.mediaIndex) : ""}
             onChange={(_event, data) => onChangeMedia(Number(data.value))}
           >
@@ -190,7 +188,7 @@ export function MediaControlPanel({
 
         <div className={styles.sliderBlock}>
           <Slider
-            disabled={busy || !playbackState.isAvailable}
+            disabled={!playbackState.isAvailable}
             max={100}
             min={0}
             value={displayProgress}
@@ -212,7 +210,7 @@ export function MediaControlPanel({
         <div className={styles.actionRow}>
           <Button
             appearance="primary"
-            disabled={busy || !playbackState.isAvailable}
+            disabled={!playbackState.isAvailable}
             icon={playbackState.isPaused ? <PlayRegular /> : <PauseRegular />}
             onClick={() => onAction("toggle_play")}
           >
@@ -221,7 +219,7 @@ export function MediaControlPanel({
 
           <div className={styles.inlineActions}>
             <Select
-              disabled={busy || !playbackState.isAvailable}
+              disabled={!playbackState.isAvailable}
               value={String(playbackState.speed)}
               onChange={(_event, data) => onAction("set_speed", Number(data.value))}
             >
@@ -233,21 +231,21 @@ export function MediaControlPanel({
             </Select>
             <Button
               appearance="secondary"
-              disabled={busy || !playbackState.isAvailable}
+              disabled={!playbackState.isAvailable}
               icon={<FullScreenMaximizeRegular />}
               aria-label="全屏"
               onClick={() => onAction("fullscreen")}
             />
             <Button
               appearance="secondary"
-              disabled={busy || !playbackState.isAvailable}
+              disabled={!playbackState.isAvailable}
               icon={<PictureInPictureRegular />}
               aria-label="画中画"
               onClick={() => onAction("pip")}
             />
             <Button
               appearance="secondary"
-              disabled={busy || !playbackState.isAvailable}
+              disabled={!playbackState.isAvailable}
               icon={<CameraRegular />}
               aria-label="截图"
               onClick={() => onAction("screenshot")}
@@ -260,7 +258,7 @@ export function MediaControlPanel({
         <div className={styles.footerRow}>
           <Button
             appearance={playbackState.shouldLoop ? "primary" : "secondary"}
-            disabled={busy || !playbackState.isAvailable}
+            disabled={!playbackState.isAvailable}
             icon={<ArrowClockwiseRegular />}
             onClick={() => onAction("toggle_loop", !playbackState.shouldLoop)}
           >
@@ -270,7 +268,7 @@ export function MediaControlPanel({
           <div className={styles.volumeRow}>
             <Button
               appearance="secondary"
-              disabled={busy || !playbackState.isAvailable}
+              disabled={!playbackState.isAvailable}
               icon={displayMuted ? <SpeakerMuteRegular /> : <Speaker2Regular />}
               aria-label={displayMuted ? "取消静音" : "静音"}
               onClick={() => onAction("toggle_muted", !displayMuted)}
@@ -278,7 +276,7 @@ export function MediaControlPanel({
             <div className={styles.volumeSlider}>
               <Slider
                 className={styles.volumeSliderControl}
-                disabled={busy || !playbackState.isAvailable}
+                disabled={!playbackState.isAvailable}
                 max={100}
                 min={0}
                 value={displayVolume}

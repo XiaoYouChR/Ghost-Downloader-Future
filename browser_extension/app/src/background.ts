@@ -9,7 +9,13 @@ import {createDesktopBridge} from "./background/desktop-bridge";
 import {createFeatureBridge} from "./background/feature-bridge";
 import {createMediaBridge} from "./background/media-bridge";
 import {createResourceBridge} from "./background/resource-bridge";
-import {SHOULD_TAKE_DOWNLOADS_KEY, IS_MEDIA_BUTTON_ENABLED_KEY,} from "./background/constants";
+import {
+    BYPASS_MODIFIER_KEY,
+    IS_MEDIA_BUTTON_ENABLED_KEY,
+    MIN_TAKE_SIZE_KB_KEY,
+    SHOULD_TAKE_UNKNOWN_SIZE_KEY,
+    SHOULD_TAKE_DOWNLOADS_KEY,
+} from "./background/constants";
 import {
     cancelDownload,
     eraseDownloadFromHistory,
@@ -19,16 +25,54 @@ import {
     queryTabs,
 } from "./background/chrome-helpers";
 import {onSendHeadersExtraInfoSpec, supportsDownloadDeterminingFilename,} from "./shared/browser";
+import {loadBaseIcons, updateIconForTasks} from "./background/icon-progress";
+import {enqueue, flush, pendingCount} from "./background/task-queue";
 
-const desktopBridge = createDesktopBridge();
+async function flushQueue(): Promise<void> {
+  const sent = await flush((payload) => desktopBridge.sendRequest(payload));
+  if (sent > 0) {
+    await openActionPopup();
+  }
+}
+
+async function sendTaskOrEnqueue<T extends CommandResult>(payload: Record<string, unknown>): Promise<T> {
+  if (desktopBridge.isReady()) {
+    try {
+      return await desktopBridge.sendRequest<T>(payload);
+    } catch {
+      // Connection lost mid-send — fall through to enqueue.
+    }
+  }
+  await enqueue(payload);
+  return { ok: true, message: "桌面端未连接，任务已排队" } as T;
+}
+
+const desktopBridge = createDesktopBridge({
+  onTaskSnapshotChanged: updateIconForTasks,
+  onConnected: () => void flushQueue(),
+});
 const resourceBridge = createResourceBridge({
-  sendDesktopRequest: (payload) => desktopBridge.sendRequest(payload),
+  sendDesktopRequest: (payload) => sendTaskOrEnqueue(payload),
 });
 const featureBridge = createFeatureBridge();
 const mediaBridge = createMediaBridge();
 
 let shouldTakeDownloads = true;
 let isMediaButtonEnabled = true;
+let minTakeSizeKB = 0;
+let shouldTakeUnknownSize = true;
+
+function imageFilename(url: string, alt: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const basename = decodeURIComponent(pathname.split("/").pop() || "");
+    if (basename && /\.\w{2,5}$/.test(basename)) {
+      return basename.slice(0, 160);
+    }
+  } catch { /* invalid URL */ }
+  const safe = (alt || "image").replace(/[<>:"/\\|?*\x00-\x1f]+/g, " ").trim().slice(0, 120);
+  return safe || "image";
+}
 
 async function injectMediaButton(tabId: number) {
   if (!isMediaButtonEnabled) {
@@ -106,6 +150,7 @@ async function buildPopupState(options: {
     featureStates: featureBridge.createFeatureStateMap(activeTabId),
     mediaItems: mediaPanelState.mediaItems,
     mediaPlaybackState: mediaPanelState.playbackState,
+    pendingTaskCount: await pendingCount(),
     ...resourceState,
   };
 }
@@ -114,13 +159,19 @@ async function setupBackground() {
   const localState = await loadLocalState<{
     [SHOULD_TAKE_DOWNLOADS_KEY]: boolean;
     [IS_MEDIA_BUTTON_ENABLED_KEY]: boolean;
+    [MIN_TAKE_SIZE_KB_KEY]: number;
+    [SHOULD_TAKE_UNKNOWN_SIZE_KEY]: boolean;
   }>({
     [SHOULD_TAKE_DOWNLOADS_KEY]: true,
     [IS_MEDIA_BUTTON_ENABLED_KEY]: true,
+    [MIN_TAKE_SIZE_KB_KEY]: 0,
+    [SHOULD_TAKE_UNKNOWN_SIZE_KEY]: true,
   });
 
   shouldTakeDownloads = Boolean(localState[SHOULD_TAKE_DOWNLOADS_KEY] ?? true);
   isMediaButtonEnabled = Boolean(localState[IS_MEDIA_BUTTON_ENABLED_KEY] ?? true);
+  minTakeSizeKB = Number(localState[MIN_TAKE_SIZE_KB_KEY]) || 0;
+  shouldTakeUnknownSize = Boolean(localState[SHOULD_TAKE_UNKNOWN_SIZE_KEY] ?? true);
 
   try {
     const selfInfo = await chrome.management.getSelf();
@@ -129,6 +180,7 @@ async function setupBackground() {
     desktopBridge.setInstallType("normal");
   }
 
+  await loadBaseIcons();
   await desktopBridge.loadPersistentState();
   await resourceBridge.loadPersistentState();
   await featureBridge.loadPersistentState();
@@ -143,6 +195,28 @@ async function setupBackground() {
 
   desktopBridge.setupReconnectAlarm();
 }
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "gd-download-link",
+    title: "使用 Ghost Downloader 下载",
+    contexts: ["link"],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId !== "gd-download-link" || !info.linkUrl) { return; }
+  const headers = resourceBridge.headersForPage(info.pageUrl ?? "");
+  if (!headers.referer && info.pageUrl) {
+    headers.referer = info.pageUrl;
+  }
+  void sendTaskOrEnqueue({
+    type: "create_task",
+    source: "download",
+    title: "",
+    payload: { url: info.linkUrl, headers, filename: "", size: 0, supportsRange: false },
+  });
+});
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   desktopBridge.onReconnectAlarm(alarm);
@@ -164,6 +238,12 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (changes[IS_MEDIA_BUTTON_ENABLED_KEY]) {
     isMediaButtonEnabled = Boolean(changes[IS_MEDIA_BUTTON_ENABLED_KEY].newValue ?? true);
+  }
+  if (changes[MIN_TAKE_SIZE_KB_KEY]) {
+    minTakeSizeKB = Number(changes[MIN_TAKE_SIZE_KB_KEY].newValue) || 0;
+  }
+  if (changes[SHOULD_TAKE_UNKNOWN_SIZE_KEY]) {
+    shouldTakeUnknownSize = Boolean(changes[SHOULD_TAKE_UNKNOWN_SIZE_KEY].newValue ?? true);
   }
 });
 
@@ -211,13 +291,28 @@ chrome.webRequest.onResponseStarted.addListener(
   ["responseHeaders"],
 );
 
+let bypassNextDownload = false;
+let bypassTimer = 0;
+
 async function takeBrowserDownload(
   downloadItem: chrome.downloads.DownloadItem,
   options: { eraseFromHistory?: boolean } = {},
 ) {
-  const finalUrl = downloadItem.finalUrl || downloadItem.url;
-  if (!shouldTakeDownloads || !desktopBridge.isReady() || !/^https?:/i.test(finalUrl)) {
+  if (bypassNextDownload) {
+    bypassNextDownload = false;
+    clearTimeout(bypassTimer);
     return;
+  }
+
+  const finalUrl = downloadItem.finalUrl || downloadItem.url;
+  if (!shouldTakeDownloads || !/^https?:/i.test(finalUrl)) {
+    return;
+  }
+
+  if (minTakeSizeKB > 0) {
+    const totalBytes = downloadItem.totalBytes ?? -1;
+    if (totalBytes < 0 && !shouldTakeUnknownSize) { return; }
+    if (totalBytes >= 0 && totalBytes < minTakeSizeKB * 1024) { return; }
   }
 
   try {
@@ -305,11 +400,31 @@ async function runPopupCommand(command: PopupCommand): Promise<PopupState | Comm
       }
     case "popup_media_action":
       try {
-        await mediaBridge.runAction(command.action, command.value);
-        return { ok: true, message: "" };
+        const playbackState = await mediaBridge.runAction(command.action, command.value);
+        return { ok: true, message: "", playbackState };
       } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : "媒体操作失败" };
       }
+    case "popup_send_images": {
+      let count = 0;
+      for (const image of command.images) {
+        const filename = imageFilename(image.src, image.alt);
+        await sendTaskOrEnqueue({
+          type: "create_task",
+          source: "download",
+          title: filename,
+          payload: {
+            url: image.src,
+            headers: { referer: command.pageUrl },
+            filename,
+            size: 0,
+            supportsRange: false,
+          },
+        });
+        count += 1;
+      }
+      return { ok: true, message: `已处理 ${count} 张图片` };
+    }
     default:
       return unknownPopupCommand(command);
   }
@@ -355,6 +470,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       href: String(message.href ?? ""),
       title: String(message.title ?? ""),
     }));
+  }
+
+  if (message.type === "media_metadata" && Array.isArray(message.urls)) {
+    const meta = {
+      duration: message.duration,
+      videoWidth: message.videoWidth,
+      videoHeight: message.videoHeight,
+      posterUrl: message.posterUrl,
+    };
+    resourceBridge.enrichResource(message.urls, meta);
+    if (sender.tab?.id && meta.posterUrl) {
+      resourceBridge.enrichTabPoster(sender.tab.id, meta.posterUrl);
+    }
+    return;
+  }
+
+  if (message.type === "page_poster" && message.posterUrl && sender.tab?.id) {
+    resourceBridge.enrichTabPoster(sender.tab.id, String(message.posterUrl));
+    return;
+  }
+
+  if (message.type === "bypass_next_download") {
+    bypassNextDownload = true;
+    clearTimeout(bypassTimer);
+    bypassTimer = self.setTimeout(() => { bypassNextDownload = false; }, 3000);
+    return;
   }
 
   if (message.type === "page_media_button_state") {

@@ -1,4 +1,4 @@
-export type PopupView = "tasks" | "resources" | "advanced" | "settings";
+export type PopupView = "tasks" | "resources" | "images" | "advanced" | "settings";
 export type TaskAction = "toggle_pause" | "redownload" | "open_file" | "open_folder" | "cancel";
 export type MediaAction =
   | "toggle_play"
@@ -20,7 +20,7 @@ export type DesktopConnectionState =
   | "unauthorized"
   | "disconnected";
 
-export type ResourceFilter = "all" | "video" | "audio" | "streaming";
+export type ResourceFilter = "all" | "video" | "audio";
 export type ResourceScope = "current" | "other";
 export type ResourceCollectionState = "restoring" | "ready" | "unavailable";
 
@@ -62,6 +62,10 @@ export interface Resource {
   requestHeaders: Record<string, string>;
   capturedAt: number;
   sentToDesktopAt?: number;
+  duration?: number;
+  videoWidth?: number;
+  videoHeight?: number;
+  posterUrl?: string;
 }
 
 export interface TaskCounters {
@@ -118,10 +122,19 @@ export interface PopupState {
   featureStates: FeatureStateMap;
   mediaItems: MediaItemOption[];
   mediaPlaybackState: MediaPlaybackState;
+  pendingTaskCount: number;
+}
+
+export interface ScannedImage {
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  alt: string;
 }
 
 export interface CommandResult {
   ok: boolean;
   message?: string;
   taskId?: string;
+  playbackState?: MediaPlaybackState;
 }

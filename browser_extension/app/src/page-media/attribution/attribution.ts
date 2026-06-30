@@ -3,7 +3,7 @@ import {fileExtension, filenameFromUrl, mimeFromUrl} from "../../shared/utils";
 
 import {AttributionLedger} from "./attribution-ledger";
 import {selectMediaForPage} from "../resolution/strategy";
-import {isMediaSignal} from "./attribution-signal";
+import {isMediaSignal, postMediaSignal} from "./attribution-signal";
 import type {AttributedUrlView, FindUrlsByIdHint, SessionSnapshot, ResolveContext, ResolveHints} from "../resolution/strategy";
 import type {
   AttributionTier,
@@ -15,7 +15,7 @@ import type {
   VideoSessionState,
 } from "../types";
 
-const LOG_PREFIX = "[GD3 Media]";
+const LOG_PREFIX = "[GD Media]";
 const VIDEO_ID_QUERY_KEYS = ["__vid", "v", "modal_id", "video_id", "id", "bvid", "aid"];
 // Budget from the FIRST Pending — not per re-eval.
 const WAIT_FOR_TIMEOUT_MS = 8000;
@@ -160,6 +160,7 @@ class MediaAttribution {
 
     element.addEventListener("loadstart", () => this.onMediaLoadStart(element));
     element.addEventListener("loadedmetadata", () => this.onMediaLoadedMetadata(element));
+    element.addEventListener("durationchange", () => this.onMediaDurationChange(element));
     element.addEventListener("emptied", () => this.onMediaEmptied(element));
 
     const initialSrc = element.currentSrc || element.src || "";
@@ -193,6 +194,29 @@ class MediaAttribution {
     const src = element.currentSrc || element.src || "";
     console.log(`${LOG_PREFIX} ${session.id} loadedmetadata`, { state: session.state, src });
     this.bindBlobToMediaSource(session, src);
+    this.emitMediaMetadata(element, session);
+  }
+
+  private onMediaDurationChange(element: HTMLMediaElement): void {
+    const session = this.sessionsByElement.get(element);
+    if (!session) { return; }
+    this.emitMediaMetadata(element, session);
+  }
+
+  private emitMediaMetadata(element: HTMLMediaElement, session: VideoSession): void {
+    const urls = [...session.attributedUrls.keys()];
+    if (element.currentSrc && !urls.includes(element.currentSrc)) {
+      urls.push(element.currentSrc);
+    }
+    if (urls.length === 0) { return; }
+    postMediaSignal({
+      kind: "media_metadata",
+      urls,
+      duration: Number.isFinite(element.duration) ? element.duration : 0,
+      videoWidth: element instanceof HTMLVideoElement ? element.videoWidth : 0,
+      videoHeight: element instanceof HTMLVideoElement ? element.videoHeight : 0,
+      posterUrl: element instanceof HTMLVideoElement ? (element.poster || "") : "",
+    });
   }
 
   private onMediaEmptied(element: HTMLMediaElement): void {
@@ -634,7 +658,7 @@ class MediaAttribution {
 
 declare global {
   interface Window {
-    __gd3PageMedia?: {
+    __gdPageMedia?: {
       attributedUrlsForElement(element: HTMLMediaElement | null): string[];
       selectMediaForElement(
         element: HTMLMediaElement | null,
@@ -652,7 +676,7 @@ export function startMediaAttribution(): void {
   if (attributionInstance) { return; }
   attributionInstance = new MediaAttribution();
   attributionInstance.start();
-  window.__gd3PageMedia = {
+  window.__gdPageMedia = {
     attributedUrlsForElement: (element) => attributionInstance?.attributedUrlsFor(element) ?? [],
     selectMediaForElement: (element, hints, onStateChange) =>
      attributionInstance?.selectMediaForElement(element, hints, onStateChange) ?? Promise.resolve({ kind: "refused" as const, message: "attribution not ready" }),

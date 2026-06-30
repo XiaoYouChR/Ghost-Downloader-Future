@@ -7,11 +7,15 @@ import {TaskCard} from "../components/TaskCard";
 
 const useStyles = makeStyles({
   empty: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
     padding: "14px",
   },
   root: {
     display: "flex",
     flexDirection: "column",
+    flex: 1,
     gap: "10px",
     padding: "14px",
   },

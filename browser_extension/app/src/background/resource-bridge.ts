@@ -16,7 +16,7 @@ import {
     BRIDGE_RESOURCE_CACHE_KEY,
 } from "./constants";
 import {findTab, loadSessionState, openActionPopup, queryTabs, saveSessionState,} from "./chrome-helpers";
-import {toResourceTaskOptions, handoffFilename, resourceNameFromCapture} from "./download-spec";
+import {toResourceTaskOptions, taskNameForResource, resourceNameFromCapture} from "./download-spec";
 import {
     ResourceCache,
     selectAllowedHeaders,
@@ -113,7 +113,7 @@ export function createResourceBridge(options: {
     return normalizedLeft === normalizedRight || normalizedLeft.startsWith(normalizedRight) || normalizedRight.startsWith(normalizedLeft);
   }
 
-  async function findTabIdByPageUrl(pageUrl: string): Promise<number | null> {
+  async function tabIdByPageUrl(pageUrl: string): Promise<number | null> {
     const normalizedPageUrl = urlWithoutHash(pageUrl);
     if (!normalizedPageUrl) {
       return null;
@@ -186,7 +186,7 @@ export function createResourceBridge(options: {
     return null;
   }
 
-  async function findTabIdForPageMessage(sender: chrome.runtime.MessageSender, href?: string): Promise<number | null> {
+  async function tabIdForPageMessage(sender: chrome.runtime.MessageSender, href?: string): Promise<number | null> {
     if (sender.tab?.id) {
       await setLastActiveTab(sender.tab.id);
       return sender.tab.id;
@@ -194,7 +194,7 @@ export function createResourceBridge(options: {
 
     const normalizedHref = href?.trim() ?? "";
     if (normalizedHref) {
-      const matchedTabId = await findTabIdByPageUrl(normalizedHref);
+      const matchedTabId = await tabIdByPageUrl(normalizedHref);
       if (matchedTabId != null) {
         return matchedTabId;
       }
@@ -203,7 +203,7 @@ export function createResourceBridge(options: {
     return currentTabId();
   }
 
-  async function findTabIdForNetworkRequest(details: chrome.webRequest.OnResponseStartedDetails): Promise<number | null> {
+  async function tabIdForNetworkRequest(details: chrome.webRequest.OnResponseStartedDetails): Promise<number | null> {
     if (details.tabId > 0) {
       return details.tabId;
     }
@@ -211,7 +211,7 @@ export function createResourceBridge(options: {
     if (snapshotTabId != null) {
       return snapshotTabId;
     }
-    const matchedTabId = await findTabIdByPageUrl(details.initiator ?? "");
+    const matchedTabId = await tabIdByPageUrl(details.initiator ?? "");
     return matchedTabId ?? currentTabId();
   }
 
@@ -268,7 +268,7 @@ export function createResourceBridge(options: {
   }
 
   async function downloadResourceViaBrowser(resource: Resource): Promise<void> {
-    const filename = handoffFilename(resource);
+    const filename = taskNameForResource(resource);
 
     return new Promise((resolve, reject) => {
       chrome.downloads.download(
@@ -350,7 +350,7 @@ export function createResourceBridge(options: {
   }
 
   async function capturePageResource(sender: chrome.runtime.MessageSender, payload: CapturePayload) {
-    const tabId = await findTabIdForPageMessage(sender, payload.href);
+    const tabId = await tabIdForPageMessage(sender, payload.href);
     if (!tabId || !/^(https?:|blob:)/i.test(payload.url)) {
       return;
     }
@@ -377,7 +377,7 @@ export function createResourceBridge(options: {
       return;
     }
 
-    const tabId = await findTabIdForNetworkRequest(details);
+    const tabId = await tabIdForNetworkRequest(details);
     if (!tabId) {
       return;
     }
@@ -552,7 +552,7 @@ export function createResourceBridge(options: {
   }
 
   async function downloadPageMedia(sender: chrome.runtime.MessageSender, payload: ClickPayload): Promise<CommandResult> {
-    const tabId = await findTabIdForPageMessage(sender, payload.href);
+    const tabId = await tabIdForPageMessage(sender, payload.href);
     if (!tabId) {
       return { ok: false, message: "当前没有可操作的标签页" };
     }
@@ -645,7 +645,7 @@ export function createResourceBridge(options: {
         payload: {
           resources: ordered.map((resource) => ({
             url: resource.url,
-            filename: handoffFilename(resource),
+            filename: taskNameForResource(resource),
             mime: resource.mime,
             size: resource.size,
             headers: resource.requestHeaders,
@@ -725,6 +725,11 @@ export function createResourceBridge(options: {
     captureRequestResource,
     downloadPageMedia,
     flushState,
+    enrichResource: (urls: string[], meta: Parameters<typeof cache.enrichResource>[1]) =>
+      cache.enrichResource(urls, meta),
+    enrichTabPoster: (tabId: number, posterUrl: string) =>
+      cache.enrichTabPoster(tabId, posterUrl),
+    headersForPage: (pageUrl: string) => cache.headersForPage(pageUrl),
     routeBrowserDownload,
     onNavigationCommitted,
     onRequestHeaders,

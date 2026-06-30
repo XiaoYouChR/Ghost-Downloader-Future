@@ -10,6 +10,7 @@ import type {
     MediaPlaybackState,
     PopupState,
     PopupView,
+    ScannedImage,
     TaskAction,
 } from "../shared/types";
 import {sortTasks} from "../shared/utils";
@@ -77,6 +78,7 @@ function emptyPopupState(): PopupState {
     featureStates: emptyFeatureStates(),
     mediaItems: [],
     mediaPlaybackState: emptyMediaState(),
+    pendingTaskCount: 0,
   };
 }
 
@@ -153,7 +155,6 @@ export function usePopupBridge(activeView: PopupView) {
   const [isRequestingPairing, setIsRequestingPairing] = useState(false);
   const [isUpdatingTakeDownloads, setIsUpdatingTakeDownloads] = useState(false);
   const [isUpdatingMediaButton, setIsUpdatingMediaButton] = useState(false);
-  const [isUpdatingMedia, setIsUpdatingMedia] = useState(false);
 
   const mountedRef = useRef(true);
   const toastTimerRef = useRef<number | null>(null);
@@ -497,43 +498,61 @@ export function usePopupBridge(activeView: PopupView) {
 
   const sendMediaAction = useCallback(
     async (action: MediaAction, value?: number | boolean) => {
-      // Fullscreen needs window.close() — a popup lifecycle concern the SW can't own.
-      if (action === "fullscreen") {
+      // Fullscreen and PiP need a user-gesture context that SW routing loses.
+      if (action === "fullscreen" || action === "pip") {
         const tabId = payload.mediaPlaybackState.tabId;
         const index = payload.mediaPlaybackState.mediaIndex;
         if (!tabId || index < 0) {
           showToast("当前没有可控制的媒体", "error");
           return;
         }
-        setIsUpdatingMedia(true);
         try {
-          await sendFullscreenMessage(tabId, index);
-        } catch (error) {
-          showToast(errorMessageOr(error, "全屏失败"), "error");
-        } finally {
-          if (mountedRef.current) {
-            setIsUpdatingMedia(false);
+          if (action === "fullscreen") {
+            await sendFullscreenMessage(tabId, index);
+          } else {
+            chrome.tabs.sendMessage(tabId, { Message: "pip", index });
           }
+        } catch (error) {
+          showToast(errorMessageOr(error, action === "fullscreen" ? "全屏失败" : "画中画失败"), "error");
         }
         return;
       }
 
-      setIsUpdatingMedia(true);
       try {
-        await sendActionCommand(
+        const result = await sendActionCommand(
           { type: "popup_media_action", action, value },
           "媒体操作失败",
         );
-        await refreshState("advanced");
+        if (result.playbackState && mountedRef.current) {
+          setPayload((prev) => ({ ...prev, mediaPlaybackState: result.playbackState! }));
+        }
       } catch (error) {
         showToast(errorMessageOr(error, "媒体操作失败"), "error");
-      } finally {
-        if (mountedRef.current) {
-          setIsUpdatingMedia(false);
-        }
       }
     },
-    [payload.mediaPlaybackState.tabId, payload.mediaPlaybackState.mediaIndex, refreshState, showToast],
+    [payload.mediaPlaybackState.tabId, payload.mediaPlaybackState.mediaIndex, showToast],
+  );
+
+  const sendImages = useCallback(
+    async (images: ScannedImage[]) => {
+      try {
+        const [tab] = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+          chrome.tabs.query({ active: true, currentWindow: true }, resolve);
+        });
+        const pageUrl = tab?.url ?? "";
+        const result = await sendActionCommand({
+          type: "popup_send_images",
+          images,
+          pageUrl,
+        }, "发送图片失败");
+        showToast(result.message || "图片已发送", "success");
+        return true;
+      } catch (error) {
+        showToast(errorMessageOr(error, "发送图片失败"), "error");
+        return false;
+      }
+    },
+    [showToast],
   );
 
   const sortedTasks = useMemo(() => sortTasks(payload.tasks), [payload.tasks]);
@@ -549,7 +568,6 @@ export function usePopupBridge(activeView: PopupView) {
     isRequestingPairing,
     isUpdatingTakeDownloads,
     isUpdatingMediaButton,
-    isUpdatingMedia,
     saveToken,
     saveServerUrl,
     refreshConnection,
@@ -564,6 +582,7 @@ export function usePopupBridge(activeView: PopupView) {
     sendMediaAction,
     sortedTasks,
     isTaskBusy: (taskId: string) => busyTaskIds.has(taskId),
+    sendImages,
     isResourceBusy: (resourceId: string) => busyResourceIds.has(resourceId),
     isFeatureBusy: (featureKey: AdvancedFeatureKey) => busyFeatureKeys.has(featureKey),
   };

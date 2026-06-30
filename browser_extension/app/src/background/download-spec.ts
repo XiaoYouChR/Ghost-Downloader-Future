@@ -88,8 +88,8 @@ export function resourceNameFromCapture(payload: ResourceNameInput): string {
   return ext ? filenameWithExtension("resource", ext) : "resource";
 }
 
-// The final filename handed off to the desktop or browser; prefers the page title.
-export function handoffFilename(resource: Resource): string {
+// Task name derived from a captured resource; prefers the page title.
+export function taskNameForResource(resource: Resource): string {
   const urlFilename = filenameFromUrl(resource.url);
   const current = cleanFilename(resource.filename || urlFilename);
   const extension = fileExtension(current)
@@ -100,12 +100,12 @@ export function handoffFilename(resource: Resource): string {
   return filenameWithExtension(baseName, extension);
 }
 
-// 资源 → ResourceTaskOptions. The canonical single-resource handoff options.
+// 资源 → ResourceTaskOptions.
 export function toResourceTaskOptions(resource: Resource): ResourceTaskOptions {
   return {
     url: resource.url,
     headers: resource.requestHeaders,
-    filename: handoffFilename(resource),
+    filename: taskNameForResource(resource),
     size: resource.size,
     supportsRange: resource.supportsRange,
   };

@@ -1,10 +1,18 @@
 import type {SelectTabData} from "@fluentui/react-components";
-import {Badge, Button, Caption1, Card, makeStyles, Tab, TabList} from "@fluentui/react-components";
-import {TabDesktopRegular, WindowMultipleRegular} from "@fluentui/react-icons";
+import {Badge, Button, Caption1, Card, makeStyles, Select, Tab, TabList} from "@fluentui/react-components";
+import {
+    ArrowDownloadRegular,
+    CheckboxCheckedRegular,
+    CheckboxIndeterminateRegular,
+    DismissRegular,
+    MergeRegular,
+    TabDesktopRegular,
+    WindowMultipleRegular,
+} from "@fluentui/react-icons";
 import {useEffect, useMemo, useState} from "react";
 
 import type {Resource, ResourceCollectionState, ResourceFilter, ResourceScope} from "../../shared/types";
-import {canUseOnlineMergeSelection, filterResources} from "../../shared/utils";
+import {canUseOnlineMergeSelection, fileExtension, filenameFromUrl, filterResources, isDashSegment} from "../../shared/utils";
 import {EmptyState} from "../components/EmptyState";
 import {ResourceCard} from "../components/ResourceCard";
 
@@ -12,53 +20,49 @@ const useStyles = makeStyles({
   root: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    padding: "16px",
+    flex: 1,
+    gap: "8px",
+    padding: "12px 16px",
+    paddingBottom: "60px",
   },
-  scopeCard: {
-    padding: "16px",
-  },
-  scopeRow: {
+  toolbar: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
-    width: "100%",
+    gap: "8px",
   },
-  scopeTabs: {
-    minWidth: 0,
+  toolbarSpacer: {
     flex: 1,
   },
-  scopeCaption: {
-    marginLeft: "auto",
-    whiteSpace: "nowrap",
+  scopeSelect: {
+    minWidth: "100px",
   },
-  filterRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  filterCount: {
-    marginLeft: "auto",
-  },
-  selectionCard: {
-    padding: "12px 16px",
-  },
-  selectionRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-  },
-  selectionActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    marginLeft: "auto",
+  filterTabs: {
+    minWidth: 0,
   },
   list: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
+    gap: "6px",
+  },
+  foldToggle: {
+    padding: "6px 12px",
+    cursor: "pointer",
+  },
+  actionBar: {
+    position: "fixed",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 16px",
+    backgroundColor: "var(--colorNeutralBackground1)",
+    borderTop: "1px solid var(--colorNeutralStroke2)",
+    zIndex: 10,
+  },
+  actionSpacer: {
+    flex: 1,
   },
 });
 
@@ -66,32 +70,19 @@ const RESOURCE_FILTERS: Array<{ key: ResourceFilter; label: string }> = [
   { key: "all", label: "全部" },
   { key: "video", label: "视频" },
   { key: "audio", label: "音频" },
-  { key: "streaming", label: "流媒体" },
 ];
 
 function emptyCopy(scope: ResourceScope, state: ResourceCollectionState, message: string) {
   if (scope === "current" && state === "restoring") {
-    return {
-      title: "正在恢复当前页面资源",
-      description: message || "正在恢复已捕获的资源。",
-    };
+    return { title: "正在恢复当前页面资源", description: message || "正在恢复已捕获的资源。" };
   }
   if (scope === "current" && state === "unavailable") {
-    return {
-      title: "当前标签页暂不支持资源桥接",
-      description: message || "当前标签页暂时无法提供资源列表。",
-    };
+    return { title: "当前标签页暂不支持资源桥接", description: message || "当前标签页暂时无法提供资源列表。" };
   }
   if (scope === "current") {
-    return {
-      title: "当前页面还没有资源",
-      description: "启用深度搜索或缓存捕捉后，这里会显示桥接过来的页面资源。",
-    };
+    return { title: "当前页面还没有资源", description: "播放视频或音频后，这里会自动显示捕获到的资源。" };
   }
-  return {
-    title: "还没有其他页面的资源",
-    description: "切换到其他标签页并捕获到资源后，这里会自动汇总显示。",
-  };
+  return { title: "还没有其他页面的资源", description: "切换到其他标签页并捕获到资源后，这里会自动汇总显示。" };
 }
 
 export function ResourcesPage({
@@ -119,20 +110,56 @@ export function ResourcesPage({
   const [scope, setScope] = useState<ResourceScope>("current");
   const [filter, setFilter] = useState<ResourceFilter>("all");
   const [selectedResourceIds, setSelectedResourceIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [isDashExpanded, setDashExpanded] = useState(false);
+  const [isHlsExpanded, setHlsExpanded] = useState(false);
 
   const scopedResources = scope === "current" ? currentResources : otherResources;
   const filteredResources = useMemo(() => filterResources(scopedResources, filter), [filter, scopedResources]);
-  const filteredResourceIds = useMemo(() => new Set(filteredResources.map((resource) => resource.id)), [filteredResources]);
+
+  const hasM3u8 = useMemo(
+    () => filteredResources.some((r) => {
+      const ext = fileExtension(r.filename || filenameFromUrl(r.url));
+      return ext === "m3u8" || ext === "mpd";
+    }),
+    [filteredResources],
+  );
+
+  const { normalResources, dashSegments, hlsSegments } = useMemo(() => {
+    const normal: Resource[] = [];
+    const dash: Resource[] = [];
+    const hls: Resource[] = [];
+    for (const r of filteredResources) {
+      if (isDashSegment(r)) {
+        dash.push(r);
+      } else if (hasM3u8 && fileExtension(r.filename || filenameFromUrl(r.url)) === "ts") {
+        hls.push(r);
+      } else {
+        normal.push(r);
+      }
+    }
+    normal.sort((a, b) => {
+      const aExt = fileExtension(a.filename || filenameFromUrl(a.url));
+      const bExt = fileExtension(b.filename || filenameFromUrl(b.url));
+      const aIsManifest = aExt === "m3u8" || aExt === "mpd" ? 1 : 0;
+      const bIsManifest = bExt === "m3u8" || bExt === "mpd" ? 1 : 0;
+      if (aIsManifest !== bIsManifest) { return bIsManifest - aIsManifest; }
+      return b.capturedAt - a.capturedAt;
+    });
+    return { normalResources: normal, dashSegments: dash, hlsSegments: hls };
+  }, [filteredResources, hasM3u8]);
+
+  const filteredResourceIds = useMemo(() => new Set(filteredResources.map((r) => r.id)), [filteredResources]);
   const selectedResources = useMemo(
-    () => filteredResources.filter((resource) => selectedResourceIds.has(resource.id)),
+    () => filteredResources.filter((r) => selectedResourceIds.has(r.id)),
     [filteredResources, selectedResourceIds],
   );
-  const canMergeSelectedResources = connected && canUseOnlineMergeSelection(selectedResources);
+  const canMerge = connected && canUseOnlineMergeSelection(selectedResources);
+  const hasSelection = selectedResources.length > 0;
   const emptyState = emptyCopy(scope, resourceState, resourceStateMessage);
 
   useEffect(() => {
     setSelectedResourceIds((current) => {
-      const next = new Set([...current].filter((resourceId) => filteredResourceIds.has(resourceId)));
+      const next = new Set([...current].filter((id) => filteredResourceIds.has(id)));
       return next.size === current.size ? current : next;
     });
   }, [filteredResourceIds]);
@@ -140,100 +167,81 @@ export function ResourcesPage({
   function toggleResource(resourceId: string, checked: boolean) {
     setSelectedResourceIds((current) => {
       const next = new Set(current);
-      if (checked) {
-        next.add(resourceId);
-      } else {
-        next.delete(resourceId);
-      }
+      checked ? next.add(resourceId) : next.delete(resourceId);
       return next;
     });
   }
 
-  function selectVisibleResources() {
-    setSelectedResourceIds(new Set(filteredResources.map((resource) => resource.id)));
+  function visibleResourceIds(): string[] {
+    const ids = normalResources.map((r) => r.id);
+    if (isDashExpanded) { ids.push(...dashSegments.map((r) => r.id)); }
+    if (isHlsExpanded) { ids.push(...hlsSegments.map((r) => r.id)); }
+    return ids;
+  }
+
+  function selectAll() {
+    setSelectedResourceIds(new Set(visibleResourceIds()));
+  }
+
+  function invertSelection() {
+    const visible = visibleResourceIds();
+    setSelectedResourceIds(new Set(visible.filter((id) => !selectedResourceIds.has(id))));
   }
 
   function clearSelection() {
     setSelectedResourceIds(new Set());
   }
 
+  function sendSelected() {
+    for (const r of selectedResources) { onSendResource(r.id); }
+  }
+
   async function mergeSelected() {
-    if (!selectedResources.length) {
-      return;
-    }
-    const success = await onMergeResources(selectedResources.map((resource) => resource.id));
-    if (success) {
-      clearSelection();
-    }
+    if (!selectedResources.length) { return; }
+    const ok = await onMergeResources(selectedResources.map((r) => r.id));
+    if (ok) { setSelectedResourceIds(new Set()); }
+  }
+
+  function renderCard(resource: Resource) {
+    return (
+      <ResourceCard
+        key={resource.id}
+        resource={resource}
+        connected={connected}
+        busy={isResourceBusy(resource.id)}
+        selected={selectedResourceIds.has(resource.id)}
+        onSend={() => onSendResource(resource.id)}
+        onSelectedChange={(checked) => toggleResource(resource.id, checked)}
+      />
+    );
   }
 
   return (
     <div className={styles.root}>
-      <Card appearance="filled-alternative" className={styles.scopeCard}>
-        <div className={styles.scopeRow}>
-          <TabList
-            appearance="subtle-circular"
-            className={styles.scopeTabs}
-            reserveSelectedTabSpace={false}
-            selectedValue={scope}
-            size="small"
-            onTabSelect={(_event, data: SelectTabData) => setScope(data.value as ResourceScope)}
-          >
-            <Tab value="current">当前页面</Tab>
-            <Tab value="other">其他页面</Tab>
-          </TabList>
-          <Caption1 className={styles.scopeCaption}>
-            {scope === "current" ? activePageDomain || "当前标签页" : "所有已捕获"}
-          </Caption1>
-        </div>
-      </Card>
-
-      <div className={styles.filterRow}>
+      <div className={styles.toolbar}>
         <TabList
           appearance="subtle-circular"
+          className={styles.filterTabs}
           selectedValue={filter}
           size="small"
-          onTabSelect={(_event, data: SelectTabData) => setFilter(data.value as ResourceFilter)}
+          onTabSelect={(_e, data: SelectTabData) => setFilter(data.value as ResourceFilter)}
         >
           {RESOURCE_FILTERS.map((item) => (
-            <Tab key={item.key} value={item.key}>
-              {item.label}
-            </Tab>
+            <Tab key={item.key} value={item.key}>{item.label}</Tab>
           ))}
         </TabList>
-        <Badge appearance="outline" color="subtle" className={styles.filterCount}>
-          {`${filteredResources.length} 项资源`}
-        </Badge>
+        <div className={styles.toolbarSpacer} />
+        <Select
+          className={styles.scopeSelect}
+          size="small"
+          value={scope}
+          onChange={(_e, data) => setScope(data.value as ResourceScope)}
+        >
+          <option value="current">当前页面</option>
+          <option value="other">其他页面</option>
+        </Select>
+        <Badge appearance="outline" color="informative" size="small">{`${filteredResources.length} 项`}</Badge>
       </div>
-
-      {filteredResources.length > 0 ? (
-        <Card appearance="filled-alternative" className={styles.selectionCard}>
-          <div className={styles.selectionRow}>
-            <Badge appearance="tint" color="brand">
-              {selectedResources.length > 0 ? `已选 ${selectedResources.length} 项` : "未选择资源"}
-            </Badge>
-            <Caption1>
-              在线合并需要选中 2 个可合并的 HTTP 资源，blob 资源暂不支持
-            </Caption1>
-            <div className={styles.selectionActions}>
-              <Button appearance="secondary" size="small" onClick={selectVisibleResources}>
-                全选
-              </Button>
-              <Button appearance="subtle" size="small" onClick={clearSelection}>
-                清空
-              </Button>
-              <Button
-                appearance="primary"
-                disabled={!canMergeSelectedResources}
-                size="small"
-                onClick={() => void mergeSelected()}
-              >
-                合并音视频
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : null}
 
       {filteredResources.length === 0 ? (
         <EmptyState
@@ -242,19 +250,68 @@ export function ResourcesPage({
           description={emptyState.description}
         />
       ) : (
-        <section className={styles.list}>
-          {filteredResources.map((resource) => (
-            <ResourceCard
-              key={resource.id}
-              resource={resource}
-              connected={connected}
-              busy={isResourceBusy(resource.id)}
-              selected={selectedResourceIds.has(resource.id)}
-              onSend={() => onSendResource(resource.id)}
-              onSelectedChange={(checked) => toggleResource(resource.id, checked)}
-            />
-          ))}
-        </section>
+        <>
+          <section className={styles.list}>
+            {normalResources.map(renderCard)}
+          </section>
+
+          {dashSegments.length > 0 && (
+            <>
+              <Card
+                appearance="filled-alternative"
+                className={styles.foldToggle}
+                onClick={() => setDashExpanded(!isDashExpanded)}
+              >
+                <Caption1>{`${dashSegments.length} 个 DASH 分片 ${isDashExpanded ? "▾" : "▸"}`}</Caption1>
+              </Card>
+              {isDashExpanded && (
+                <section className={styles.list}>{dashSegments.map(renderCard)}</section>
+              )}
+            </>
+          )}
+
+          {hlsSegments.length > 0 && (
+            <>
+              <Card
+                appearance="filled-alternative"
+                className={styles.foldToggle}
+                onClick={() => setHlsExpanded(!isHlsExpanded)}
+              >
+                <Caption1>{`${hlsSegments.length} 个 HLS 分片 ${isHlsExpanded ? "▾" : "▸"}`}</Caption1>
+              </Card>
+              {isHlsExpanded && (
+                <section className={styles.list}>{hlsSegments.map(renderCard)}</section>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {hasSelection && (
+        <div className={styles.actionBar}>
+          <Button appearance="subtle" size="small" icon={<CheckboxCheckedRegular />} onClick={selectAll}>全选</Button>
+          <Button appearance="subtle" size="small" icon={<CheckboxIndeterminateRegular />} onClick={invertSelection}>反选</Button>
+          <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={clearSelection}>取消</Button>
+          <div className={styles.actionSpacer} />
+          <Button
+            appearance="primary"
+            disabled={!connected}
+            icon={<ArrowDownloadRegular />}
+            size="small"
+            onClick={sendSelected}
+          >
+            {`发送 (${selectedResources.length})`}
+          </Button>
+          <Button
+            appearance="secondary"
+            disabled={!canMerge}
+            icon={<MergeRegular />}
+            size="small"
+            onClick={() => void mergeSelected()}
+          >
+            合并
+          </Button>
+        </div>
       )}
     </div>
   );

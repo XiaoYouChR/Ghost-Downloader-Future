@@ -190,40 +190,52 @@ export function createMediaBridge() {
   // makes upstream content-script.js throw on videoObj[index].currentTime. Refreshing here
   // also gives toggle_play a fresh isPaused, so play/pause direction matches the live state
   // rather than what the popup last polled.
-  async function runAction(action: MediaAction, value?: number | boolean): Promise<void> {
+  async function runAction(action: MediaAction, value?: number | boolean): Promise<MediaPlaybackState> {
     if (!mediaSnapshot) {
       throw new Error("当前没有可控制的媒体");
     }
 
     const tabId = mediaSnapshot.tabId;
-    const result = await requestMediaState(tabId, mediaSnapshot.index);
-    const state = result.response;
-    if (result.status !== "ok" || !state?.count) {
-      mediaSnapshot = null;
-      throw new Error(mediaFailureMessage(result));
-    }
+    const index = mediaSnapshot.index;
+    const current = mediaSnapshot.playbackState;
 
-    const count = Number(state.count);
-    const index = mediaSnapshot.index >= 0 && mediaSnapshot.index < count ? mediaSnapshot.index : 0;
-    const playbackState = buildPlaybackState(tabId, index, state);
-    mediaSnapshot = { tabId, index, playbackState };
+    // Only toggle_play needs a fresh isPaused — all other actions use the cached snapshot.
+    if (action === "toggle_play") {
+      const probe = await requestMediaState(tabId, index);
+      if (probe.status === "ok" && probe.response?.count) {
+        const fresh = buildPlaybackState(tabId, index, probe.response);
+        mediaSnapshot = { tabId, index, playbackState: fresh };
+      }
+    }
 
     const message = buildMediaMessage(action, value, mediaSnapshot);
     if (!message) {
-      return;
+      return current;
     }
 
-    // Auto-unmute when the user raises volume while muted.
     if (
       action === "set_volume"
       && typeof value === "number"
       && value > 0
-      && playbackState.isMuted
+      && mediaSnapshot.playbackState.isMuted
     ) {
       await sendMediaCommand(tabId, { Message: "muted", action: false, index });
     }
 
     await sendMediaCommand(tabId, message);
+
+    // Optimistic update — predict the new state from the action.
+    const optimistic = { ...mediaSnapshot.playbackState };
+    switch (action) {
+      case "toggle_play": optimistic.isPaused = !mediaSnapshot.playbackState.isPaused; break;
+      case "set_speed": optimistic.speed = Number(value ?? 1); break;
+      case "set_volume": optimistic.volume = Number(value ?? 1); optimistic.isMuted = false; break;
+      case "set_time": optimistic.currentTime = Number(value ?? 0); break;
+      case "toggle_loop": optimistic.shouldLoop = Boolean(value); break;
+      case "toggle_muted": optimistic.isMuted = Boolean(value); break;
+    }
+    mediaSnapshot = { tabId, index, playbackState: optimistic };
+    return optimistic;
   }
 
   function setMediaIndex(tabId: number, index: number) {

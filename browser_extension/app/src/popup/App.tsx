@@ -5,9 +5,11 @@ import type {PopupView, ThemePreference} from "../shared/types";
 import {AdvancedPage} from "./pages/AdvancedPage";
 import {DownloadsPage} from "./pages/DownloadsPage";
 import {Header} from "./components/Header";
+import {ImagesPage} from "./pages/ImagesPage";
 import {ResourcesPage} from "./pages/ResourcesPage";
 import {SettingsPage} from "./pages/SettingsPage";
 import {ToastHost} from "./components/ToastHost";
+import {launchDesktop} from "./launch-desktop";
 import {usePopupBridge} from "./usePopupBridge";
 
 const useStyles = makeStyles({
@@ -20,6 +22,8 @@ const useStyles = makeStyles({
     overflow: "hidden",
   },
   content: {
+    display: "flex",
+    flexDirection: "column",
     flex: 1,
     overflowY: "auto",
   },
@@ -46,9 +50,11 @@ export function App({
         isMediaButtonBusy={bridge.isUpdatingMediaButton}
         shouldTakeDownloads={bridge.shouldTakeDownloads}
         isTakeDownloadsBusy={bridge.isUpdatingTakeDownloads}
+        pendingTaskCount={bridge.pendingTaskCount}
         onViewChange={setCurrentView}
         onMediaButtonToggle={(enabled) => void bridge.setMediaButtonEnabled(enabled)}
         onTakeDownloadsToggle={(enabled) => void bridge.setShouldTakeDownloads(enabled)}
+        onLaunchDesktop={launchDesktop}
       />
 
       <main className={styles.content}>
@@ -57,6 +63,13 @@ export function App({
             tasks={bridge.sortedTasks}
             isTaskBusy={bridge.isTaskBusy}
             onTaskAction={(taskId, action) => void bridge.sendTaskAction(taskId, action)}
+          />
+        ) : null}
+
+        {currentView === "images" ? (
+          <ImagesPage
+            connected={bridge.isConnected}
+            onSendImages={(images) => bridge.sendImages(images)}
           />
         ) : null}
 
@@ -81,7 +94,6 @@ export function App({
             onFeatureToggle={(feature) => void bridge.toggleFeature(feature)}
             mediaItems={bridge.mediaItems}
             mediaPlaybackState={bridge.mediaPlaybackState}
-            mediaBusy={bridge.isUpdatingMedia}
             onMediaItemChange={(index) => void bridge.setMediaIndex(index)}
             onMediaAction={(action, value) => void bridge.sendMediaAction(action, value)}
           />

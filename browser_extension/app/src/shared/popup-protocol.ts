@@ -2,6 +2,7 @@ import type {
   AdvancedFeatureKey,
   MediaAction,
   PopupView,
+  ScannedImage,
   TaskAction,
 } from "./types";
 
@@ -27,6 +28,7 @@ export type ActionCommand =
   | { type: "popup_send_resource"; resourceId: string }
   | { type: "popup_merge_resources"; resourceIds: string[] }
   | { type: "popup_toggle_feature"; feature: AdvancedFeatureKey; tabId: number }
-  | { type: "popup_media_action"; action: MediaAction; value?: number | boolean };
+  | { type: "popup_media_action"; action: MediaAction; value?: number | boolean }
+  | { type: "popup_send_images"; images: ScannedImage[]; pageUrl: string };
 
 export type PopupCommand = StateCommand | ActionCommand;

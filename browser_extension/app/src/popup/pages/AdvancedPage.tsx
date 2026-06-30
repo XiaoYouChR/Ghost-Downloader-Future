@@ -30,7 +30,6 @@ export function AdvancedPage({
   onFeatureToggle,
   mediaItems,
   mediaPlaybackState,
-  mediaBusy,
   onMediaItemChange,
   onMediaAction,
 }: {
@@ -39,7 +38,6 @@ export function AdvancedPage({
   onFeatureToggle: (feature: AdvancedFeatureKey) => void;
   mediaItems: MediaItemOption[];
   mediaPlaybackState: MediaPlaybackState;
-  mediaBusy?: boolean;
   onMediaItemChange: (index: number) => void;
   onMediaAction: (action: MediaAction, value?: number | boolean) => void;
 }) {
@@ -58,7 +56,6 @@ export function AdvancedPage({
       <MediaControlPanel
         mediaItems={mediaItems}
         playbackState={mediaPlaybackState}
-        busy={mediaBusy}
         onChangeMedia={onMediaItemChange}
         onAction={onMediaAction}
       />

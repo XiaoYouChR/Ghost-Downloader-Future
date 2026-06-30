@@ -1,7 +1,7 @@
 /*
  * Ghost Downloader — "download this media" overlay (ISOLATED world).
  * A floating button that locates the active <video> and asks the page-media attribution
- * engine (window.__gd3PageMedia) to resolve the right stream, then hands it to the background.
+ * engine (window.__gdPageMedia) to resolve the right stream, then hands it to the background.
  * Built as a standalone IIFE bundle (see scripts/build.mjs).
  */
 import {findActiveMedia} from "./active-media";
@@ -13,6 +13,9 @@ declare global {
   }
 }
 
+const IDLE_TIMEOUT_MS = 3000;
+const FADE_DURATION_MS = 300;
+
 (function installGhostDownloaderMediaButton() {
   if (window.GhostDownloaderMediaButton?.installed) { return; }
   if (!globalThis.chrome?.runtime?.sendMessage) { return; }
@@ -23,13 +26,21 @@ declare global {
   let updateQueued = false;
   let enabled = false;
   let positionTimer = 0;
+  let idleTimer = 0;
+  let isVisible = false;
+  let isHoveringButton = false;
+  let mouseMoveQueued = false;
+  let lastMouseX = -1;
+  let lastMouseY = -1;
 
   host.id = "ghostDownloaderMediaDownload";
   Object.assign(host.style, {
     display: "none",
     left: "0",
+    opacity: "0",
     position: "fixed",
     top: "0",
+    transition: `opacity ${FADE_DURATION_MS}ms ease`,
     zIndex: "1000000000",
   });
 
@@ -89,19 +100,72 @@ declare global {
   const label = root.querySelector(".label")!;
   const status = root.querySelector(".status")!;
 
+  function showButton(): void {
+    if (isVisible) { return; }
+    isVisible = true;
+    host.style.display = "block";
+    void host.offsetHeight;
+    host.style.opacity = "1";
+  }
+
+  function hideButton(): void {
+    if (!isVisible) { return; }
+    isVisible = false;
+    host.style.opacity = "0";
+  }
+
+  function resetIdleTimer(): void {
+    clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => {
+      if (!isHoveringButton) { hideButton(); }
+    }, IDLE_TIMEOUT_MS);
+  }
+
+  host.addEventListener("transitionend", () => {
+    if (host.style.opacity === "0") {
+      host.style.display = "none";
+    }
+  });
+
+  host.addEventListener("mouseenter", () => {
+    isHoveringButton = true;
+    clearTimeout(idleTimer);
+  });
+
+  host.addEventListener("mouseleave", () => {
+    isHoveringButton = false;
+    resetIdleTimer();
+  });
+
+  function isMouseOverVideo(): boolean {
+    const active = findActiveMedia();
+    if (!active) { return false; }
+    const { rect } = active;
+    return lastMouseX >= rect.left && lastMouseX <= rect.right
+        && lastMouseY >= rect.top && lastMouseY <= rect.bottom;
+  }
+
+  function onMouseMoveFrame(): void {
+    mouseMoveQueued = false;
+    if (!enabled) { return; }
+    if (isMouseOverVideo()) {
+      showButton();
+      resetIdleTimer();
+      scheduleUpdate();
+    }
+  }
+
   function updatePosition(): void {
     updateQueued = false;
-    if (!enabled) {
-      host.style.display = "none";
+    if (!enabled || !isVisible) {
       return;
     }
     const selected = findActiveMedia();
     if (!selected) {
-      host.style.display = "none";
+      hideButton();
       return;
     }
 
-    host.style.display = "block";
     const gap = 8;
     const buttonWidth = host.offsetWidth || 112;
     const buttonHeight = host.offsetHeight || 32;
@@ -129,17 +193,31 @@ declare global {
     if (document.documentElement && !host.isConnected) {
       document.documentElement.appendChild(host);
     }
-    scheduleUpdate();
-    positionTimer = window.setInterval(scheduleUpdate, 1000);
+    document.addEventListener("mousemove", onMouseMove, { passive: true });
+    if (positionTimer) { clearInterval(positionTimer); }
+    positionTimer = window.setInterval(() => {
+      if (isVisible) { scheduleUpdate(); }
+    }, 1000);
   }
 
   function disableOverlay(): void {
     enabled = false;
-    host.style.display = "none";
+    hideButton();
     host.remove();
+    document.removeEventListener("mousemove", onMouseMove);
+    clearTimeout(idleTimer);
     if (positionTimer) {
       clearInterval(positionTimer);
       positionTimer = 0;
+    }
+  }
+
+  function onMouseMove(event: MouseEvent): void {
+    lastMouseX = event.clientX;
+    lastMouseY = event.clientY;
+    if (!mouseMoveQueued) {
+      mouseMoveQueued = true;
+      requestAnimationFrame(onMouseMoveFrame);
     }
   }
 
@@ -154,14 +232,12 @@ declare global {
     status.className = failed ? "status error" : "status";
     clearTimeout(resetTimer);
     if (text && !failed) {
-      // Matches TERMINAL_RESET_MS in attribution.ts so toast fade and button re-enable line up.
       resetTimer = window.setTimeout(() => { status.textContent = ""; }, 1600);
     }
   }
 
   let downloadInFlight = false;
   async function downloadMedia(): Promise<void> {
-    // Double-click would otherwise re-fire within the toast window before the auto-reset.
     if (downloadInFlight) { return; }
     const media = findActiveMedia()?.media;
     if (!media) {
@@ -169,7 +245,7 @@ declare global {
       return;
     }
 
-    const pageMedia = window.__gd3PageMedia;
+    const pageMedia = window.__gdPageMedia;
     if (!pageMedia?.selectMediaForElement) {
       setStatus("扩展未就绪", true);
       return;
@@ -180,7 +256,6 @@ declare global {
     label.textContent = "正在解析";
     setStatus("");
 
-    // Mirror attribution state on the button so the user sees a "waiting" beat instead of staring at "正在解析".
     const onState = (next: VideoSessionState) => {
       if (next === "waiting") { label.textContent = "等待资源…"; }
       else if (next === "resolving" || next === "dispatched") { label.textContent = "正在发送"; }
@@ -191,7 +266,6 @@ declare global {
         poster: media.poster || "",
       }, onState);
       if (!resolution || resolution.kind === "refused") {
-        // selectMediaForElement already moved the session to 'refused'; flipping to 'failed' would misreport.
         setStatus(resolution?.message || "未能定位媒体", true);
         return;
       }
@@ -216,7 +290,6 @@ declare global {
       label.textContent = "下载此媒体";
       (button as HTMLButtonElement).disabled = false;
       downloadInFlight = false;
-      scheduleUpdate();
     }
   }
 

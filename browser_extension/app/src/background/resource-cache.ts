@@ -208,6 +208,40 @@ export class ResourceCache {
     return sortResources(result);
   }
 
+  enrichResource(urls: string[], meta: {
+    duration?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+    posterUrl?: string;
+  }): void {
+    let changed = false;
+    for (const url of urls) {
+      const normalizedUrl = urlWithoutHash(url, true);
+      for (const resource of this.resourcesById.values()) {
+        if (!resource.id.endsWith(`:${normalizedUrl}`)) { continue; }
+        if (meta.duration != null && meta.duration > 0) { resource.duration = meta.duration; }
+        if (meta.videoWidth != null && meta.videoWidth > 0) { resource.videoWidth = meta.videoWidth; }
+        if (meta.videoHeight != null && meta.videoHeight > 0) { resource.videoHeight = meta.videoHeight; }
+        if (meta.posterUrl) { resource.posterUrl = meta.posterUrl; }
+        changed = true;
+      }
+    }
+    if (changed) { this.onChange(); }
+  }
+
+  enrichTabPoster(tabId: number, posterUrl: string): void {
+    const resourceMap = this.resourcesByTab.get(tabId);
+    if (!resourceMap || !posterUrl) { return; }
+    let changed = false;
+    for (const resource of resourceMap.values()) {
+      if (!resource.posterUrl) {
+        resource.posterUrl = posterUrl;
+        changed = true;
+      }
+    }
+    if (changed) { this.onChange(); }
+  }
+
   setSent(id: string): void {
     const resource = this.resourcesById.get(id);
     if (!resource) {

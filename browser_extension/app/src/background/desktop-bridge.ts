@@ -29,7 +29,12 @@ export type DesktopBridgeSnapshot = {
   tasks: TaskSummary[];
 };
 
-export function createDesktopBridge() {
+export interface DesktopBridgeOptions {
+  onTaskSnapshotChanged?: (tasks: TaskSummary[]) => void;
+  onConnected?: () => void;
+}
+
+export function createDesktopBridge(options: DesktopBridgeOptions = {}) {
   let desktopSocket: WebSocket | null = null;
   let reconnectTimer: number | null = null;
   let installType = "";
@@ -99,6 +104,7 @@ export function createDesktopBridge() {
       desktopVersion = String(message.appVersion ?? "");
       setConnectionState("connected", "已连接");
       desktopSocket?.send(JSON.stringify({ type: "subscribe_tasks" }));
+      options.onConnected?.();
       return;
     }
 
@@ -109,6 +115,7 @@ export function createDesktopBridge() {
 
     if (message.type === "task_snapshot" && Array.isArray(message.tasks)) {
       taskSnapshot = message.tasks as TaskSummary[];
+      options.onTaskSnapshotChanged?.(taskSnapshot);
       return;
     }
 
@@ -205,6 +212,8 @@ export function createDesktopBridge() {
       }
       desktopSocket = null;
       rejectPendingRequests("连接断开");
+      taskSnapshot = [];
+      options.onTaskSnapshotChanged?.([]);
       if (connectionState !== "unauthorized" && connectionState !== "missing_token") {
         desktopVersion = "";
         setConnectionState("disconnected", "未连接");
