@@ -33,10 +33,8 @@ export GD3_ICON="${GD3_ICON:-$REPO/app/assets/logo.png}"
 
 export GD3_ICON_FG="${GD3_ICON_FG:-$ANDROID_DIR/res/icon_foreground.png}"
 export GD3_ICON_BG="${GD3_ICON_BG:-$ANDROID_DIR/res/icon_background.png}"
-export GD3_PRESPLASH="${GD3_PRESPLASH:-$ANDROID_DIR/res/presplash.jpg}"
-export GD3_PRESPLASH_COLOR="${GD3_PRESPLASH_COLOR:-#F3F3F3}"
 
-export GD3_RES="${GD3_RES:-$ANDROID_DIR/res/values-night/colors.xml:values-night/colors.xml}"
+export GD3_RES="${GD3_RES:-$ANDROID_DIR/res/values-night/colors.xml:values-night/colors.xml,$ANDROID_DIR/res/splash_logo.png:drawable-nodpi/gd3_splash_logo.png,$ANDROID_DIR/res/drawable/gd3_splash.xml:drawable/gd3_splash.xml}"
 
 export GD3_APP_TITLE="${GD3_APP_TITLE:-Ghost Downloader}"
 export GD3_PKG_NAME="${GD3_PKG_NAME:-ghostdownloader}"
@@ -47,7 +45,7 @@ export GD3_VERSION="${GD3_VERSION:-$(grep -oP '^VERSION = "\K[^"]+' "$REPO/app/c
 export GD3_QT_MODULES="${GD3_QT_MODULES:-Core,Gui,Widgets,Network,Svg,SvgWidgets,WebSockets,Xml}"
 echo "[build] STAGE=$STAGE"
 echo "[build] applicationId=$GD3_PKG_DOMAIN.$GD3_PKG_NAME  label=$GD3_APP_TITLE"
-echo "[build] adaptive icon fg=$GD3_ICON_FG bg=$GD3_ICON_BG  presplash=$GD3_PRESPLASH color=$GD3_PRESPLASH_COLOR"
+echo "[build] adaptive icon fg=$GD3_ICON_FG bg=$GD3_ICON_BG"
 echo "[build] GD3_EXTRA_REQ=$GD3_EXTRA_REQ  GD3_EXTRA_PERM=$GD3_EXTRA_PERM"
 echo "[build] GD3_QT_MODULES=$GD3_QT_MODULES"
 
