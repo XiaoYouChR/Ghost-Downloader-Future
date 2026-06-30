@@ -8,11 +8,19 @@ import {
     MessageBar,
     MessageBarBody,
     Select,
+    SpinButton,
+    Switch,
 } from "@fluentui/react-components";
+import type {SpinButtonOnChangeData, SwitchOnChangeData} from "@fluentui/react-components";
 import {ArrowClockwiseRegular, ClipboardPasteRegular, PlugConnectedRegular,} from "@fluentui/react-icons";
 import {useEffect, useState} from "react";
 
 import {DEFAULT_SERVER_URL, EXTENSION_VERSION, HELP_CONTENT} from "../../shared/constants";
+import {
+    BYPASS_MODIFIER_KEY,
+    MIN_TAKE_SIZE_KB_KEY,
+    SHOULD_TAKE_UNKNOWN_SIZE_KEY,
+} from "../../background/constants";
 import type {ThemePreference} from "../../shared/types";
 
 const useStyles = makeStyles({
@@ -101,6 +109,21 @@ export function SettingsPage({
   const [serverUrlDraft, setServerUrlDraft] = useState(serverUrl || DEFAULT_SERVER_URL);
   const [tokenDirty, setTokenDirty] = useState(false);
   const [serverDirty, setServerDirty] = useState(false);
+  const [minSizeKB, setMinSizeKB] = useState(0);
+  const [takeUnknownSize, setInterceptUnknown] = useState(true);
+  const [bypassModifier, setBypassModifier] = useState("alt");
+
+  useEffect(() => {
+    chrome.storage.local.get({
+      [MIN_TAKE_SIZE_KB_KEY]: 0,
+      [SHOULD_TAKE_UNKNOWN_SIZE_KEY]: true,
+      [BYPASS_MODIFIER_KEY]: "alt",
+    }, (result) => {
+      setMinSizeKB(Number(result[MIN_TAKE_SIZE_KB_KEY]) || 0);
+      setInterceptUnknown(Boolean(result[SHOULD_TAKE_UNKNOWN_SIZE_KEY] ?? true));
+      setBypassModifier(String(result[BYPASS_MODIFIER_KEY] || "alt"));
+    });
+  }, []);
 
   useEffect(() => {
     if (!tokenDirty) {
@@ -217,6 +240,50 @@ export function SettingsPage({
             />
             <Button disabled={savingToken} icon={<ClipboardPasteRegular />} aria-label="粘贴令牌" onClick={() => void pasteToken()} />
           </div>
+        </Field>
+      </Card>
+
+      <Card appearance="filled-alternative" className={styles.card}>
+        <Body1Strong>下载设置</Body1Strong>
+
+        <Field label="最小拦截大小" hint="低于此大小的文件由浏览器直接下载，0 为全部拦截">
+          <SpinButton
+            min={0}
+            max={1048576}
+            step={100}
+            value={minSizeKB}
+            displayValue={`${minSizeKB} KB`}
+            onChange={(_event, data: SpinButtonOnChangeData) => {
+              const value = data.value ?? 0;
+              setMinSizeKB(value);
+              void chrome.storage.local.set({ [MIN_TAKE_SIZE_KB_KEY]: value });
+            }}
+          />
+        </Field>
+
+        <Field label="大小未知时拦截">
+          <Switch
+            checked={takeUnknownSize}
+            onChange={(_event, data: SwitchOnChangeData) => {
+              setInterceptUnknown(data.checked);
+              void chrome.storage.local.set({ [SHOULD_TAKE_UNKNOWN_SIZE_KEY]: data.checked });
+            }}
+          />
+        </Field>
+
+        <Field label="跳过拦截快捷键" hint="按住此键点击下载链接，跳过拦截由浏览器下载">
+          <Select
+            value={bypassModifier}
+            onChange={(_event, data) => {
+              const value = data.value;
+              setBypassModifier(value);
+              void chrome.storage.local.set({ [BYPASS_MODIFIER_KEY]: value });
+            }}
+          >
+            <option value="alt">Alt / Option</option>
+            <option value="ctrl">Ctrl</option>
+            <option value="shift">Shift</option>
+          </Select>
         </Field>
       </Card>
 

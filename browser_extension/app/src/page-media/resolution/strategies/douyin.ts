@@ -1,7 +1,7 @@
 import {douyinKindOf, hostEndsWith} from "../url-classify";
 import {newestMatching, postBindAttributedUrls, selectMergePair} from "../strategy";
 import type {FindUrlsByIdHint, ResolveContext} from "../strategy";
-import type {Resolution} from "../types";
+import type {Resolution} from "../../types";
 
 // Until the next reel's MSE binds and correlation locks the URL, the prefetched URL is
 // still provisionally owned by the previous reel's session. modal_id is what survives
