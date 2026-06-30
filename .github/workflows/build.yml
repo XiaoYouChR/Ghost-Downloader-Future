@@ -1,0 +1,393 @@
+name: Build / Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Build Target'
+        required: true
+        default: 'windows'
+        type: choice
+        options:
+          - 'windows'
+          - 'macos'
+          - 'linux'
+          - 'all'
+      package_installer:
+        description: 'Package Installer'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      sign_artifact:
+        description: 'Sign Artifact'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  release:
+    types: [ published ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    if: ${{ github.event_name == 'release' || github.event.inputs.build_target == 'windows' || github.event.inputs.build_target == 'all' }}
+    strategy:
+      matrix:
+        architecture: [ x86_64, arm64 ]
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --timeout=300 -r requirements.txt
+
+      - name: Build with Nuitka
+        run: |
+          python -c "from app.config.constants import VERSION; f = open('version.txt', 'w'); f.write(VERSION); f.close(); f = open('scripts/Ghost-Downloader-3.iss', 'r+'); _ = f.read().replace('APPLICATION_VERSION', VERSION); f.seek(0); f.write(_); f.truncate(); f.close();"
+          $VERSION = gc version.txt
+          Write-Host "VERSION=$VERSION"
+          echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+          del version.txt
+          python scripts/deploy.py
+
+      - name: Prepare For Sign
+        if: ${{ github.event_name == 'release' || github.event.inputs.sign_artifact == 'true' }}
+        run: |
+          mv dist/Ghost-Downloader-3.dist dist/Ghost-Downloader-3-Unsigned.dist
+
+      - name: upload-unsigned-artifact
+        if: ${{ github.event_name == 'release' || github.event.inputs.sign_artifact == 'true' }}
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Unsigned
+          path: dist/Ghost-Downloader-3-Unsigned.dist
+
+      - name: Sign
+        if: ${{ github.event_name == 'release' || github.event.inputs.sign_artifact == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '${{ secrets.SIGNPATH_ORGANIZATION_ID }}'
+          project-slug: 'Ghost-Downloader-3'
+          signing-policy-slug: 'release-signing'
+          github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: 'dist/Ghost-Downloader-3.dist'
+
+      - name: Download Inno Setup Translation Files
+        if: ${{ github.event_name == 'release' || github.event.inputs.package_installer == 'true' }}
+        run: |
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl" -OutFile "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseTraditional.isl" -OutFile "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseTraditional.isl"
+
+      - name: Build Installer
+        if: ${{ github.event_name == 'release' || github.event.inputs.package_installer == 'true' }}
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.8
+        with:
+          path: scripts/Ghost-Downloader-3.iss
+
+      - name: Rename Installer
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.package_installer == 'true' }}
+        shell: pwsh
+        run: |
+          mv dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-Setup.exe dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
+
+      - name: Upload Installer
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.package_installer == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup
+          path: dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
+
+      - name: Create zip file
+        if: ${{ github.event_name == 'release' }}
+        shell: pwsh
+        run: |
+          $distPath = "dist/Ghost-Downloader-3.dist"
+          $zipFile = "Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip"
+
+          # Create a zip file containing the contents of Ghost-Downloader.dist, without the folder itself
+          Write-Output "Zipping contents of $distPath..."
+          7z a -tzip -mx=9 -m0=LZMA Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip dist/Ghost-Downloader-3.dist/*
+          Write-Output "Zip created at $zipFile"
+
+          mv dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-Setup.exe dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
+
+      - name: Upload artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}
+          path: |
+            dist/Ghost-Downloader-3.dist
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v3
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/') }}
+        with:
+          files: |
+            Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip
+            dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
+
+  build-macos:
+    if: ${{ github.event_name == 'release' || github.event.inputs.build_target == 'macos' || github.event.inputs.build_target == 'all' }}
+    strategy:
+      matrix:
+        include:
+          - architecture: arm64
+            runner: macos-14
+            openssl_workaround: 'false'
+          - architecture: x86_64
+            runner: macos-15-intel
+            openssl_workaround: 'true'
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Remove problematic brew libs
+        if: ${{ matrix.openssl_workaround == 'true' }}
+        run: |
+          brew remove --force --ignore-dependencies openssl@3
+          brew cleanup openssl@3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --timeout=300 -r requirements.txt
+
+      - name: Build with Nuitka
+        run: |
+          VERSION=$(python3 -c "from app.config.constants import VERSION; print(VERSION)")
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          python3 scripts/deploy.py
+          chmod +x "dist/Ghost-Downloader-3.app/Contents/MacOS/Ghost-Downloader-3"
+          rm -rf "dist/Ghost-Downloader-3.build"
+          rm -rf "dist/Ghost-Downloader-3.dist"
+          mv "dist/Ghost-Downloader-3.app" "dist/Ghost Downloader.app"
+          mv "app/assets/修复软件损坏" "dist/修复软件损坏"
+          chmod +x "dist/修复软件损坏"
+
+      - name: Reinstall openssl libs
+        if: ${{ matrix.openssl_workaround == 'true' }}
+        run: |
+          brew install openssl@3
+
+      - name: Install DMG tooling
+        run: |
+          brew list create-dmg >/dev/null 2>&1 || brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          DMG_NAME="Ghost-Downloader-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg"
+          DMG_SOURCE_DIR="dist/dmg-layout"
+
+          rm -rf "$DMG_SOURCE_DIR"
+          mkdir -p "$DMG_SOURCE_DIR"
+          cp -R "dist/Ghost Downloader.app" "$DMG_SOURCE_DIR/"
+          find "$DMG_SOURCE_DIR" -name ".DS_Store" -delete
+
+          create-dmg \
+            --volname "Ghost Downloader" \
+            --volicon "app/assets/logo.icns" \
+            --background "app/assets/backgroundImage-2X.png" \
+            --window-pos 200 120 \
+            --window-size 664 404 \
+            --icon-size 72 \
+            --text-size 14 \
+            --icon "Ghost Downloader.app" 190 200 \
+            --hide-extension "Ghost Downloader.app" \
+            --app-drop-link 370 200 \
+            --add-file "修复软件损坏" "dist/修复软件损坏" 610 200 \
+            --hdiutil-quiet \
+            --hdiutil-retries 10 \
+            "$DMG_NAME" \
+            "$DMG_SOURCE_DIR"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v3
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/') }}
+        with:
+          files: Ghost-Downloader-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg
+
+      - name: Upload artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Ghost-Downloader-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}
+          path: Ghost-Downloader-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg
+
+  build-ubuntu:
+    if: ${{ github.event_name == 'release' || github.event.inputs.build_target == 'linux' || github.event.inputs.build_target == 'all' }}
+    strategy:
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: ubuntu-22.04
+            deb_arch: amd64
+            appimage_arch: x86_64
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+            deb_arch: arm64
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils libegl1-mesa-dev
+          pip install --timeout=300 -r requirements.txt
+
+      - name: Build with Nuitka
+        run: |
+          VERSION=$(python3 -c "from app.config.constants import VERSION; print(VERSION)")
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          python scripts/deploy.py
+          chmod +x "dist/Ghost-Downloader-3.dist/Ghost-Downloader-3.bin"
+
+      - name: Build .deb and .AppImage
+        run: |
+          DIST_DIR="dist/Ghost-Downloader-3.dist"
+          DEB_ROOT="$RUNNER_TEMP/deb-root"
+          APPDIR="$RUNNER_TEMP/GhostDownloader.AppDir"
+          PACKAGE_NAME="ghost-downloader"
+          INSTALL_DIR="/opt/Ghost-Downloader-3"
+          DESKTOP_FILE="$PACKAGE_NAME.desktop"
+          ICON_FILE="$PACKAGE_NAME.png"
+          DEB_FILE="dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.deb"
+          APPIMAGE_FILE="dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.AppImage"
+          APPIMAGETOOL_FILE="appimagetool-${{ matrix.appimage_arch }}.AppImage"
+          APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/latest/download/${APPIMAGETOOL_FILE}"
+
+          rm -rf "$DEB_ROOT" "$APPDIR" "$RUNNER_TEMP/squashfs-root"
+          mkdir -p \
+            "$DEB_ROOT/DEBIAN" \
+            "$DEB_ROOT$INSTALL_DIR" \
+            "$DEB_ROOT/usr/bin" \
+            "$DEB_ROOT/usr/share/applications" \
+            "$DEB_ROOT/usr/share/icons/hicolor/256x256/apps" \
+            "$APPDIR/usr/bin" \
+            "$APPDIR/usr/lib/$PACKAGE_NAME" \
+            "$APPDIR/usr/share/applications" \
+            "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          cp -R "$DIST_DIR"/. "$DEB_ROOT$INSTALL_DIR/"
+          cp -R "$DIST_DIR"/. "$APPDIR/usr/lib/$PACKAGE_NAME/"
+
+          ln -s "$INSTALL_DIR/Ghost-Downloader-3.bin" "$DEB_ROOT/usr/bin/$PACKAGE_NAME"
+          ln -s "../lib/$PACKAGE_NAME/Ghost-Downloader-3.bin" "$APPDIR/usr/bin/$PACKAGE_NAME"
+          ln -s "usr/bin/$PACKAGE_NAME" "$APPDIR/AppRun"
+
+          cat > "$DEB_ROOT/DEBIAN/control" <<EOF
+          Package: $PACKAGE_NAME
+          Version: ${{ env.VERSION }}
+          Section: net
+          Priority: optional
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: XiaoYouChR <XiaoYouChR@qq.com>
+          Description: Ghost Downloader
+           A multi-threading downloader based on PySide6.
+          EOF
+
+          cat > "$DEB_ROOT/usr/share/applications/$DESKTOP_FILE" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=Ghost Downloader
+          Comment=A multi-threading downloader based on PySide6
+          Exec=$PACKAGE_NAME
+          Icon=$PACKAGE_NAME
+          Terminal=false
+          Categories=Network;Utility;
+          StartupNotify=false
+          EOF
+
+          cp "$DEB_ROOT/usr/share/applications/$DESKTOP_FILE" "$APPDIR/usr/share/applications/$DESKTOP_FILE"
+          cp "app/assets/logo.png" "$DEB_ROOT/usr/share/icons/hicolor/256x256/apps/$ICON_FILE"
+          cp "app/assets/logo.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$ICON_FILE"
+
+          ln -s "usr/share/applications/$DESKTOP_FILE" "$APPDIR/$DESKTOP_FILE"
+          ln -s "usr/share/icons/hicolor/256x256/apps/$ICON_FILE" "$APPDIR/$ICON_FILE"
+          ln -s "usr/share/icons/hicolor/256x256/apps/$ICON_FILE" "$APPDIR/.DirIcon"
+
+          desktop-file-validate "$DEB_ROOT/usr/share/applications/$DESKTOP_FILE"
+          dpkg-deb --build --root-owner-group "$DEB_ROOT" "$DEB_FILE"
+
+          curl -fL "$APPIMAGETOOL_URL" -o "$RUNNER_TEMP/$APPIMAGETOOL_FILE"
+          chmod +x "$RUNNER_TEMP/$APPIMAGETOOL_FILE"
+          (
+            cd "$RUNNER_TEMP"
+            "./$APPIMAGETOOL_FILE" --appimage-extract >/dev/null
+            ARCH="${{ matrix.appimage_arch }}" \
+              ./squashfs-root/AppRun \
+              --no-appstream \
+              "$APPDIR" \
+              "$GITHUB_WORKSPACE/$APPIMAGE_FILE"
+          )
+          chmod +x "$APPIMAGE_FILE"
+
+          dpkg-deb --info "$DEB_FILE"
+          file "$APPIMAGE_FILE"
+
+      - name: Tar the contents of Ghost-Downloader
+        if: ${{ github.event_name == 'release' }}
+        shell: pwsh
+        run: |
+          $distPath = "dist/Ghost-Downloader-3.dist"
+          $tarFile = "Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.tar.xz"
+
+          # Create a tar.xz archive containing the contents of Ghost-Downloader.dist, without the folder itself
+          Write-Output "Creating tar.xz archive of $distPath..."
+          tar -cJf $tarFile -C $distPath .
+          Write-Output "Archive created at $tarFile"
+
+      - name: Upload artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}
+          path: |
+            dist/Ghost-Downloader-3.dist
+            dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.deb
+            dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.AppImage
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v3
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/') }}
+        with:
+          files: |
+            Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.tar.xz
+            dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.deb
+            dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.AppImage
