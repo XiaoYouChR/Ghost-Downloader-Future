@@ -98,7 +98,7 @@ class CreateTaskStatus(StrEnum):
     REJECTED = "rejected"
 
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 2
 
 
 def toStr(data: dict, key: str, default: str = "") -> str:
@@ -230,6 +230,8 @@ class BrowserService(QObject):
                     outputFolder=outputFolder,
                     subworkerCount=toInt(payload, "preBlockNum", cfg.preBlockNum.value),
                 )
+            case _:
+                raise ValueError(f"unsupported task source: {source}")
 
     def _toTaskSummary(self, task: Task) -> dict:
         progress, speed, receivedBytes = task.currentSnapshot()
@@ -251,10 +253,13 @@ class BrowserService(QObject):
         }
 
     def _closeAll(self) -> None:
+        hadAuthenticated = any(s.isAuthenticated for s in self._sessions.values())
         for session in list(self._sessions.values()):
             session.socket.close()
             self._deleteSocket(session.socket)
         self._sessions.clear()
+        if hadAuthenticated:
+            self.connectionChanged.emit()
 
     def _deleteSocket(self, socket: QWebSocket) -> None:
         try:
@@ -422,8 +427,8 @@ class BrowserService(QObject):
         })
 
         if (session.installType == "development"
-                and QVersionNumber.fromString(session.extensionVersion)[0]
-                    < QVersionNumber.fromString(LATEST_EXTENSION_VERSION)[0]
+                and QVersionNumber.fromString(session.extensionVersion)
+                    < QVersionNumber.fromString(LATEST_EXTENSION_VERSION)
                 and not self._isUpdatingExtension):
             self._isUpdatingExtension = True
             from app.services.coroutine_runner import coroutineRunner

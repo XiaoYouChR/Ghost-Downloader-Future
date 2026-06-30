@@ -1,4 +1,4 @@
-// Separate from the GD3 page-media controller so cat-catch's message lifecycle stays
+// Separate from the page-media controller so cat-catch's message lifecycle stays
 // decoupled from our attribution lifecycle.
 
 export function installCatCatchBridge(): void {

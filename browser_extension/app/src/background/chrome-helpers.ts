@@ -85,30 +85,6 @@ export async function reloadTab(tabId: number): Promise<void> {
   });
 }
 
-export async function createTab(createProperties: chrome.tabs.CreateProperties): Promise<chrome.tabs.Tab> {
-  return new Promise((resolve) => {
-    chrome.tabs.create(createProperties, (tab) => resolve(tab));
-  });
-}
-
-export async function activateTab(tabId: number): Promise<void> {
-  const tab = await findTab(tabId);
-  if (!tab?.id) {
-    return;
-  }
-
-  if (typeof tab.index === "number" && typeof tab.windowId === "number") {
-    await new Promise<void>((resolve) => {
-      chrome.tabs.highlight({ windowId: tab.windowId, tabs: tab.index }, () => resolve());
-    });
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    chrome.tabs.update(tabId, { active: true }, () => resolve());
-  });
-}
-
 export async function cancelDownload(downloadId: number): Promise<void> {
   return new Promise((resolve, reject) => {
     chrome.downloads.cancel(downloadId, () => {

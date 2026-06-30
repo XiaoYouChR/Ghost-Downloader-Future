@@ -6,7 +6,7 @@ import type {MseAttributionSignal} from "../types";
 // engine are bundled separately, so each carries its own copy of the key — they agree on
 // the string, not on a shared runtime object.
 
-export const MEDIA_SIGNAL_KEY = "__gd3MediaSignal";
+export const MEDIA_SIGNAL_KEY = "__gdMediaSignal";
 
 type TaggedSignal = MseAttributionSignal & { [MEDIA_SIGNAL_KEY]?: true };
 
